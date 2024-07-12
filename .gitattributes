@@ -1,1 +1,2 @@
+static/libs/* linguist-vendored
 *.index filter=lfs diff=lfs merge=lfs -text
