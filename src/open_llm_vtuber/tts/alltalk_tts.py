@@ -121,11 +121,20 @@ class TTSEngine(TTSInterface):
                     if self.rvc_enabled and self.rvc_model != "Disabled":
                         logger.info(f"Applying RVC voice conversion with model: {self.rvc_model}")
 
-                        # Extract the file path from the URL
-                        audio_file_path = audio_url.lstrip('/')
+                        # Extract the file name from the URL
+                        # The URL is typically in the format "/api/audio/filename.wav"
+                        audio_file_name = os.path.basename(audio_url)
+
+                        # For voice2rvc, we need to use the full path relative to the outputs directory
+                        # The error suggests the file is in the "outputs" directory
+                        audio_file_path = f"outputs/{audio_file_name}"
 
                         # Create output path for RVC-processed audio
-                        output_rvc_path = f"rvc_{Path(file_name).stem}.{self.file_extension}"
+                        output_file_name = f"rvc_{Path(file_name).stem}.{self.file_extension}"
+                        output_rvc_path = f"outputs/{output_file_name}"
+
+                        logger.info(f"Using input file path: {audio_file_path}")
+                        logger.info(f"Using output file path: {output_rvc_path}")
 
                         # Prepare RVC request data
                         rvc_data = {
@@ -148,12 +157,22 @@ class TTSEngine(TTSInterface):
 
                             if "status" in rvc_response_data and rvc_response_data["status"] == "success":
                                 if "output_path" in rvc_response_data:
+                                    # The output_path from the response is the full path to the processed file
+                                    # We need to extract just the filename for the API URL
+                                    output_path = rvc_response_data["output_path"]
+                                    logger.info(f"RVC processing returned output path: {output_path}")
+
+                                    # Extract just the filename from the output path
+                                    output_filename = os.path.basename(output_path)
+
                                     # Update the audio URL to the RVC-processed audio
-                                    # The output_path is relative to the outputs directory
-                                    audio_url = f"/api/audio/{output_rvc_path}"
+                                    audio_url = f"/api/audio/{output_filename}"
                                     logger.info(f"RVC processing successful, new audio URL: {audio_url}")
                                 else:
+                                    # If no output_path is provided, use our predefined output filename
                                     logger.warning(f"RVC processing did not return an output path: {rvc_response_data}")
+                                    audio_url = f"/api/audio/{output_file_name}"
+                                    logger.info(f"Using fallback audio URL: {audio_url}")
                             else:
                                 logger.warning(f"RVC processing returned non-success status: {rvc_response_data}")
                         else:
