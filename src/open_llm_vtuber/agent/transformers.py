@@ -48,6 +48,7 @@ def actions_extractor(live2d_model: Live2dModel):
     """
     Decorator that extracts actions from sentences, including both
     facial expressions and body motions based on emotion tags.
+    Supports emotion intensity values for more nuanced expressions.
     """
     # Create an emotion-to-motion mapper
     emotion_mapper = EmotionMotionMapper()
@@ -66,21 +67,34 @@ def actions_extractor(live2d_model: Live2dModel):
                 if not any(
                     tag.state in [TagState.START, TagState.END] for tag in sentence.tags
                 ):
-                    # Extract emotion expressions
-                    expressions = live2d_model.extract_emotion(sentence.text)
-                    if expressions:
-                        actions.expressions = expressions
+                    # Extract emotion expressions with intensity values
+                    expression_tuples = live2d_model.extract_emotion(sentence.text)
+                    if expression_tuples:
+                        # Convert expression tuples to interpolated expression dictionaries
+                        interpolated_expressions = []
+                        for expr_index, intensity in expression_tuples:
+                            interpolated_expr = live2d_model.get_interpolated_expression(
+                                expr_index, intensity
+                            )
+                            interpolated_expressions.append(interpolated_expr)
+                            logger.debug(f"Expression {expr_index} with intensity {intensity}")
 
-                        # Map emotions to motions
+                        actions.expressions = interpolated_expressions
+
+                        # Map emotions to motions (using the same emotion tags)
                         motions = []
-                        # Extract emotion tags from text
+                        # Extract emotion tags from text using regex to handle both formats
+                        import re
                         text = sentence.text.lower()
-                        for emotion in live2d_model.emo_map.keys():
-                            emotion_tag = f"[{emotion}]"
-                            if emotion_tag in text:
+                        emotion_pattern = r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]'
+                        matches = re.finditer(emotion_pattern, text)
+
+                        for match in matches:
+                            emotion = match.group(1)
+                            if emotion in live2d_model.emo_map:
                                 # Get corresponding motion for this emotion
                                 motion = emotion_mapper.get_motion_for_emotion(emotion)
-                                if motion:
+                                if motion and motion not in motions:  # Avoid duplicates
                                     motions.append(motion)
 
                         # Set motions if any were found

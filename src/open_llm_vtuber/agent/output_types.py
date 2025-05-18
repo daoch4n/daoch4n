@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 class Actions:
     """Represents actions that can be performed alongside text output"""
 
-    expressions: Optional[List[str] | List[int]] = None
+    expressions: Optional[List[str] | List[int] | List[dict]] = None
     motions: Optional[List[str]] = None  # Added motions field for body animations
     pictures: Optional[List[str]] = None
     sounds: Optional[List[str]] = None
