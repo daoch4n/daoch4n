@@ -30,7 +30,7 @@ def main():
     parser.add_argument(
         "--voice",
         type=str,
-        default="female_01.wav",
+        default="en_US-ljspeech-high.onnx",
         help="Voice to use for TTS",
     )
     parser.add_argument(
@@ -74,9 +74,9 @@ def main():
         default="test_alltalk_tts",
         help="Output file name (without extension)",
     )
-    
+
     args = parser.parse_args()
-    
+
     # Create the TTS engine
     tts_engine = TTSEngine(
         api_url=args.api_url,
@@ -87,11 +87,11 @@ def main():
         rvc_pitch=args.rvc_pitch,
         output_format=args.output_format,
     )
-    
+
     # Generate the audio
     logger.info(f"Generating audio for text: {args.text}")
     output_file = tts_engine.generate_audio(args.text, args.output)
-    
+
     if output_file:
         logger.info(f"Audio generated successfully: {output_file}")
         # Get the absolute path
