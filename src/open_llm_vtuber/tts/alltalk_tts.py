@@ -94,68 +94,81 @@ class TTSEngine(TTSInterface):
         file_name = self.generate_cache_file_name(file_name_no_ext, self.file_extension)
 
         try:
-            # Prepare the request data
-            if self.rvc_enabled and self.rvc_model != "Disabled":
-                # Use OpenAI-compatible API with RVC processing
-                data = {
-                    "input": text,
-                    "voice": self.voice,
-                    "response_format": self.file_extension,
-                    "speed": 1.0,
-                    "model": "tts-1",  # Required by OpenAI API format but not used
-                    "rvc_model": self.rvc_model,
-                    "rvc_pitch": self.rvc_pitch
-                }
+            # Always use the standard TTS endpoint first
+            data = {
+                "text_input": text,
+                "voice_selection": self.voice,
+                "language_selection": self.language,
+                "output_filename": Path(file_name).stem
+            }
 
-                # Send request to OpenAI-compatible endpoint
-                response = requests.post(
-                    f"{self.api_url}/v1/audio/speech",
-                    json=data,
-                    timeout=120
-                )
-            else:
-                # Use standard TTS endpoint
-                data = {
-                    "text_input": text,
-                    "voice_selection": self.voice,
-                    "language_selection": self.language,
-                    "output_filename": Path(file_name).stem
-                }
-
-                # Send request to standard TTS endpoint
-                response = requests.post(
-                    f"{self.api_url}/api/tts-generate",
-                    data=data,
-                    timeout=120
-                )
+            # Send request to standard TTS endpoint
+            response = requests.post(
+                f"{self.api_url}/api/tts-generate",
+                data=data,
+                timeout=120
+            )
 
             # Check if the request was successful
             if response.status_code == 200:
-                # If using standard TTS endpoint, the response is JSON with the output file path
-                if not self.rvc_enabled or self.rvc_model == "Disabled":
-                    response_data = response.json()
-                    if "output_file_url" in response_data:
-                        # Get the audio file from the server
-                        audio_response = requests.get(
-                            f"{self.api_url}{response_data['output_file_url']}",
+                response_data = response.json()
+
+                if "output_file_url" in response_data:
+                    # Get the audio file path
+                    audio_url = response_data['output_file_url']
+
+                    # If RVC is enabled, apply RVC to the generated audio
+                    if self.rvc_enabled and self.rvc_model != "Disabled":
+                        logger.info(f"Applying RVC voice conversion with model: {self.rvc_model}")
+
+                        # Extract the file name from the URL
+                        audio_file_name = os.path.basename(audio_url)
+
+                        # Prepare RVC request data
+                        rvc_data = {
+                            "input_audio": audio_file_name,
+                            "rvc_model": self.rvc_model,
+                            "pitch": self.rvc_pitch,
+                            "output_format": self.file_extension
+                        }
+
+                        # Send request to RVC endpoint
+                        rvc_response = requests.post(
+                            f"{self.api_url}/api/tts-apply-rvc",
+                            data=rvc_data,
                             timeout=120
                         )
-                        if audio_response.status_code == 200:
-                            # Save the audio content to a file
-                            with open(file_name, "wb") as audio_file:
-                                audio_file.write(audio_response.content)
+
+                        if rvc_response.status_code == 200:
+                            rvc_response_data = rvc_response.json()
+
+                            if "output_file_url" in rvc_response_data:
+                                # Update the audio URL to the RVC-processed audio
+                                audio_url = rvc_response_data['output_file_url']
+                                logger.info(f"RVC processing successful, new audio URL: {audio_url}")
+                            else:
+                                logger.warning(f"RVC processing did not return an output file URL: {rvc_response_data}")
                         else:
-                            logger.error(f"Failed to get audio file: {audio_response.status_code}")
-                            return None
+                            logger.error(f"Failed to apply RVC: {rvc_response.status_code}")
+                            logger.error(f"RVC Response: {rvc_response.text}")
+
+                    # Get the audio file from the server
+                    audio_response = requests.get(
+                        f"{self.api_url}{audio_url}",
+                        timeout=120
+                    )
+
+                    if audio_response.status_code == 200:
+                        # Save the audio content to a file
+                        with open(file_name, "wb") as audio_file:
+                            audio_file.write(audio_response.content)
+                        return file_name
                     else:
-                        logger.error(f"Unexpected response format: {response_data}")
+                        logger.error(f"Failed to get audio file: {audio_response.status_code}")
                         return None
                 else:
-                    # If using OpenAI-compatible API, the response is the audio content directly
-                    with open(file_name, "wb") as audio_file:
-                        audio_file.write(response.content)
-
-                return file_name
+                    logger.error(f"Unexpected response format: {response_data}")
+                    return None
             else:
                 # Handle errors or unsuccessful requests
                 logger.error(f"Error: Failed to generate audio. Status code: {response.status_code}")
