@@ -6,6 +6,7 @@ from ..live2d_model import Live2dModel
 from ..config_manager import TTSPreprocessorConfig
 from ..utils.sentence_divider import SentenceDivider
 from ..utils.sentence_divider import SentenceWithTags, TagState
+from ..emotion_motion_map import EmotionMotionMapper
 from loguru import logger
 
 
@@ -45,8 +46,11 @@ def sentence_divider(
 
 def actions_extractor(live2d_model: Live2dModel):
     """
-    Decorator that extracts actions from sentences
+    Decorator that extracts actions from sentences, including both
+    facial expressions and body motions based on emotion tags.
     """
+    # Create an emotion-to-motion mapper
+    emotion_mapper = EmotionMotionMapper()
 
     def decorator(
         func: Callable[..., AsyncIterator[SentenceWithTags]],
@@ -62,9 +66,28 @@ def actions_extractor(live2d_model: Live2dModel):
                 if not any(
                     tag.state in [TagState.START, TagState.END] for tag in sentence.tags
                 ):
+                    # Extract emotion expressions
                     expressions = live2d_model.extract_emotion(sentence.text)
                     if expressions:
                         actions.expressions = expressions
+
+                        # Map emotions to motions
+                        motions = []
+                        # Extract emotion tags from text
+                        text = sentence.text.lower()
+                        for emotion in live2d_model.emo_map.keys():
+                            emotion_tag = f"[{emotion}]"
+                            if emotion_tag in text:
+                                # Get corresponding motion for this emotion
+                                motion = emotion_mapper.get_motion_for_emotion(emotion)
+                                if motion:
+                                    motions.append(motion)
+
+                        # Set motions if any were found
+                        if motions:
+                            actions.motions = motions
+                            logger.debug(f"Mapped emotions to motions: {motions}")
+
                 yield sentence, actions
 
         return wrapper
