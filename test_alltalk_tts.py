@@ -47,7 +47,7 @@ def main():
     parser.add_argument(
         "--rvc-model",
         type=str,
-        default="Disabled",
+        default="daoko[23]_16hs_3bs_SPLICED_NPROC_40k_v1",
         help="RVC model to use for voice conversion",
     )
     parser.add_argument(
