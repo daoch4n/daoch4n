@@ -19,7 +19,7 @@ class CharacterConfig(I18nMixin):
     character_name: str = Field(default="", alias="character_name")
     human_name: str = Field(default="Human", alias="human_name")
     avatar: str = Field(default="", alias="avatar")
-    persona_prompt: str = Field(..., alias="persona_prompt")
+    persona_prompt: str = Field(default="", alias="persona_prompt")
     agent_config: AgentConfig = Field(..., alias="agent_config")
     asr_config: ASRConfig = Field(..., alias="asr_config")
     tts_config: TTSConfig = Field(..., alias="tts_config")
@@ -71,10 +71,8 @@ class CharacterConfig(I18nMixin):
 
     @field_validator("persona_prompt")
     def check_default_persona_prompt(cls, v):
-        if not v:
-            raise ValueError(
-                "Persona_prompt cannot be empty. Please provide a persona prompt."
-            )
+        # We now allow empty persona_prompt since it will be loaded from persona.yaml
+        # This validator is kept for backward compatibility
         return v
 
     @field_validator("character_name")
