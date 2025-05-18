@@ -179,3 +179,33 @@ def scan_bg_directory() -> list[str]:
             if file.endswith((".jpg", ".jpeg", ".png", ".gif")):
                 bg_files.append(file)
     return bg_files
+
+
+def load_persona_from_yaml(persona_file_path: str = "DAOKO.MD") -> str:
+    """
+    Load the persona prompt from a Markdown file.
+
+    Args:
+        persona_file_path: Path to the persona Markdown file.
+
+    Returns:
+        str: The content of the Markdown file as the persona prompt.
+
+    Raises:
+        FileNotFoundError: If the persona file is not found.
+    """
+    try:
+        # Use the load_text_file_with_guess_encoding function to read the file
+        content = load_text_file_with_guess_encoding(persona_file_path)
+        if not content:
+            raise IOError(f"Failed to read persona file: {persona_file_path}")
+
+        logger.debug(f"Successfully loaded persona prompt from {persona_file_path}")
+        return content
+
+    except FileNotFoundError:
+        logger.error(f"Persona file not found: {persona_file_path}")
+        raise
+    except Exception as e:
+        logger.error(f"Error loading persona from {persona_file_path}: {e}")
+        raise
