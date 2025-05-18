@@ -62,7 +62,7 @@ from .utils import (
     save_config,
     scan_config_alts_directory,
     scan_bg_directory,
-    load_persona_from_yaml,
+    load_persona,
 )
 
 __all__ = [
@@ -122,5 +122,5 @@ __all__ = [
     "save_config",
     "scan_config_alts_directory",
     "scan_bg_directory",
-    "load_persona_from_yaml",
+    "load_persona",
 ]

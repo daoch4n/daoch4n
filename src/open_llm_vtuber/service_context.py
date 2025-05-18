@@ -29,7 +29,7 @@ from .config_manager import (
     TranslatorConfig,
     read_yaml,
     validate_config,
-    load_persona_from_yaml,
+    load_persona,
 )
 
 
@@ -202,24 +202,24 @@ class ServiceContext:
         """Initialize or update the LLM engine based on agent configuration."""
         logger.info(f"Initializing Agent: {agent_config.conversation_agent_choice}")
 
-        # Load persona prompt from persona.yaml if it exists, otherwise use the one from config
+        # Load persona prompt from DAOKO.MD if it exists, otherwise use the one from config
         try:
-            # Try to load from persona.yaml
-            yaml_persona_prompt = load_persona_from_yaml()
-            logger.info("Successfully loaded persona prompt from persona.yaml")
+            # Try to load from DAOKO.MD
+            yaml_persona_prompt = load_persona()
+            logger.info("Successfully loaded persona prompt from DAOKO.MD")
             # Update the persona_prompt in the character config for consistency
             self.character_config.persona_prompt = yaml_persona_prompt
             # Use the loaded prompt
             persona_prompt = yaml_persona_prompt
         except FileNotFoundError:
-            # If persona.yaml doesn't exist, use the provided persona_prompt
-            logger.warning("persona.yaml not found, using persona_prompt from config")
+            # If DAOKO.MD doesn't exist, use the provided persona_prompt
+            logger.warning("DAOKO.MD not found, using persona_prompt from config")
             if not persona_prompt:
                 logger.warning("Empty persona_prompt in config, using a default placeholder")
                 persona_prompt = "You are a helpful AI assistant."
         except Exception as e:
             # If there's any other error, log it and use the provided persona_prompt
-            logger.error(f"Error loading persona from persona.yaml: {e}")
+            logger.error(f"Error loading persona from DAOKO.MD: {e}")
             if not persona_prompt:
                 logger.warning("Empty persona_prompt in config, using a default placeholder")
                 persona_prompt = "You are a helpful AI assistant."

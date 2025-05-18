@@ -181,7 +181,7 @@ def scan_bg_directory() -> list[str]:
     return bg_files
 
 
-def load_persona_from_yaml(persona_file_path: str = "DAOKO.MD") -> str:
+def load_persona(persona_file_path: str = "DAOKO.MD") -> str:
     """
     Load the persona prompt from a Markdown file.
 
