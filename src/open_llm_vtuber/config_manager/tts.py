@@ -301,6 +301,42 @@ class SherpaOnnxTTSConfig(I18nMixin):
     }
 
 
+class AllTalkTTSConfig(I18nMixin):
+    """Configuration for AllTalk TTS."""
+
+    api_url: str = Field("http://127.0.0.1:7851", alias="api_url")
+    voice: str = Field("female_01.wav", alias="voice")
+    language: str = Field("en", alias="language")
+    rvc_enabled: bool = Field(False, alias="rvc_enabled")
+    rvc_model: str = Field("Disabled", alias="rvc_model")
+    rvc_pitch: int = Field(0, alias="rvc_pitch")
+    output_format: str = Field("wav", alias="output_format")
+
+    DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
+        "api_url": Description(
+            en="URL of the AllTalk TTS API server", zh="AllTalk TTS API 服务器的 URL"
+        ),
+        "voice": Description(
+            en="Voice name to use for AllTalk TTS", zh="AllTalk TTS 使用的语音名称"
+        ),
+        "language": Description(
+            en="Language code (e.g., en, zh)", zh="语言代码（如 en、zh）"
+        ),
+        "rvc_enabled": Description(
+            en="Enable RVC voice conversion", zh="启用 RVC 声音转换"
+        ),
+        "rvc_model": Description(
+            en="RVC model to use for voice conversion", zh="用于声音转换的 RVC 模型"
+        ),
+        "rvc_pitch": Description(
+            en="Pitch adjustment for RVC voice conversion", zh="RVC 声音转换的音高调整"
+        ),
+        "output_format": Description(
+            en="Output audio format (wav, mp3, etc.)", zh="输出音频格式（wav、mp3 等）"
+        ),
+    }
+
+
 class TTSConfig(I18nMixin):
     """Configuration for Text-to-Speech."""
 
@@ -316,6 +352,7 @@ class TTSConfig(I18nMixin):
         "gpt_sovits_tts",
         "fish_api_tts",
         "sherpa_onnx_tts",
+        "alltalk_tts",
     ] = Field(..., alias="tts_model")
 
     azure_tts: Optional[AzureTTSConfig] = Field(None, alias="azure_tts")
@@ -331,6 +368,7 @@ class TTSConfig(I18nMixin):
     sherpa_onnx_tts: Optional[SherpaOnnxTTSConfig] = Field(
         None, alias="sherpa_onnx_tts"
     )
+    alltalk_tts: Optional[AllTalkTTSConfig] = Field(None, alias="alltalk_tts")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "tts_model": Description(
@@ -360,7 +398,7 @@ class TTSConfig(I18nMixin):
     }
 
     @model_validator(mode="after")
-    def check_tts_config(cls, values: "TTSConfig", info: ValidationInfo):
+    def check_tts_config(cls, values: "TTSConfig", _info: ValidationInfo):
         tts_model = values.tts_model
 
         # Only validate the selected TTS model
@@ -386,5 +424,7 @@ class TTSConfig(I18nMixin):
             values.fish_api_tts.model_validate(values.fish_api_tts.model_dump())
         elif tts_model == "sherpa_onnx_tts" and values.sherpa_onnx_tts is not None:
             values.sherpa_onnx_tts.model_validate(values.sherpa_onnx_tts.model_dump())
+        elif tts_model == "alltalk_tts" and values.alltalk_tts is not None:
+            values.alltalk_tts.model_validate(values.alltalk_tts.model_dump())
 
         return values

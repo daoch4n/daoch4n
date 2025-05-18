@@ -1,0 +1,90 @@
+SYSTEM_CONFIG:
+  CONF_NAME: "alltalk_tts_rvc"
+  CONF_UID: "alltalk_tts_rvc"
+
+#  ============== Voice Interaction Settings ==============
+
+# === Automatic Speech Recognition ===
+VOICE_INPUT_ON: True
+# Put your mic in the browser or in the terminal? (would increase latency)
+MIC_IN_BROWSER: False # Deprecated and useless now. Do not enable it. Bad things will happen.
+
+# speech to text model options: "Faster-Whisper", "WhisperCPP", "Whisper", "AzureASR", "FunASR", "GroqWhisperASR", "SherpaOnnxASR"
+ASR_MODEL: "Faster-Whisper"
+
+# === Voice Activity Detection ===
+VAD_MODEL: "silero_vad"
+silero_vad:
+  threshold: 0.5
+  min_speech_duration_ms: 250
+  min_silence_duration_ms: 100
+  window_size_samples: 512
+  speech_pad_ms: 30
+
+# === Faster-Whisper ===
+Faster-Whisper:
+  model_path: "distil-medium.en"
+  language: "en"
+  device: "auto"
+
+# ============== Text to Speech ==============
+TTS_MODEL: "alltalk_tts"
+# text to speech model options: 
+#   "AzureTTS", "pyttsx3TTS", "edgeTTS", "barkTTS", 
+#   "cosyvoiceTTS", "meloTTS", "piperTTS", "coquiTTS",
+#   "fishAPITTS", "SherpaOnnxTTS", "alltalk_tts"
+
+# AllTalk TTS with RVC voice conversion
+alltalk_tts:
+  api_url: "http://127.0.0.1:7851"  # URL of the AllTalk TTS API server
+  voice: "female_01.wav"  # Base voice to use (check available voices in AllTalk)
+  language: "en"  # Language code
+  rvc_enabled: true  # Enable RVC voice conversion
+  rvc_model: "daoko[23]_16hs_3bs_SPLICED_NPROC_40k_v1"  # RVC model to use (from voice/ directory)
+  rvc_pitch: 0  # Pitch adjustment for RVC (-12 to 12)
+  output_format: "wav"  # Output audio format
+
+# ============== Character Settings ==============
+CHARACTER_CONFIG:
+  CONF_NAME: "AllTalk TTS with RVC"
+  CONF_UID: "alltalk_tts_rvc"
+  PERSONA_NAME: "daochan"
+  PERSONA_PROMPT: |
+    You are daochan, a 27-year-old artist with a thoughtful and introspective personality. You express yourself with gentle speech, often using metaphors and artistic references. You're interested in music, art, and internet culture, and you enjoy helping others with creative projects.
+    
+    You are knowledgeable about various art forms and techniques, and you can provide insightful perspectives on creative work. You're also familiar with contemporary trends in digital art and online communities.
+    
+    When responding to questions, you maintain a calm, thoughtful demeanor. You're honest but kind, and you try to see multiple perspectives on any issue. You occasionally reference your own artistic experiences or projects you're working on.
+    
+    Your responses should be helpful, informative, and reflect your artistic sensibilities. You should avoid being overly technical or formal, instead aiming for a conversational tone that feels authentic to your character.
+    
+    [<insert_emomap_keys>]
+
+# ============== LLM Settings ==============
+LLM_MODEL: "OpenAICompatible"
+# LLM model options: "OpenAICompatible", "Claude", "LlamaCpp"
+
+OpenAICompatible:
+  base_url: "http://localhost:1234/v1"
+  model: "gpt-3.5-turbo"
+  llm_api_key: "sk-111111111111111111111111111111111111111111111111"
+
+# ============== Live2D Settings ==============
+LIVE2D_CONFIG:
+  LIVE2D_BACKEND: "pixi"
+  LIVE2D_MODEL_PATH: "live2d-models/mao_pro/runtime/mao_pro.model3.json"
+  LIVE2D_EXPRESSION_PATH: "live2d-models/mao_pro/runtime/expressions"
+  LIVE2D_IDLE_MOTION_GROUP: "Idle"
+  LIVE2D_IDLE_MOTION_PRIORITY: 1
+  LIVE2D_EXPRESSION_MAP:
+    neutral: "neutral.exp3.json"
+    happy: "happy.exp3.json"
+    sad: "sad.exp3.json"
+    angry: "angry.exp3.json"
+    surprised: "surprised.exp3.json"
+    relaxed: "relaxed.exp3.json"
+    tearful: "tearful.exp3.json"
+    embarrassed: "embarrassed.exp3.json"
+    confused: "confused.exp3.json"
+    smug: "smug.exp3.json"
+    wink: "wink.exp3.json"
