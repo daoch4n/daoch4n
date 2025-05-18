@@ -58,22 +58,35 @@ class TTSEngine(TTSInterface):
 
         # Check if AllTalk TTS server is running
         try:
+            # Check server status
             response = requests.get(f"{self.api_url}/api/ready", timeout=5)
             if response.status_code == 200:
                 logger.info("AllTalk TTS server is running")
 
-                # Get available voices
-                voices_response = requests.get(f"{self.api_url}/api/voices", timeout=5)
-                if voices_response.status_code == 200:
-                    voices_data = voices_response.json()
-                    logger.info(f"Available voices: {', '.join(voices_data)}")
+                # Get available character voices
+                try:
+                    voices_response = requests.get(f"{self.api_url}/api/charactervoices", timeout=5)
+                    if voices_response.status_code == 200:
+                        voices_data = voices_response.json()
+                        if isinstance(voices_data, list):
+                            logger.info(f"Available character voices: {', '.join(voices_data)}")
+                        else:
+                            logger.info(f"Character voices response: {voices_data}")
+                except Exception as e:
+                    logger.warning(f"Failed to get character voices: {e}")
 
                 # Get available RVC models if RVC is enabled
                 if self.rvc_enabled:
-                    rvc_response = requests.get(f"{self.api_url}/api/rvcvoices", timeout=5)
-                    if rvc_response.status_code == 200:
-                        rvc_data = rvc_response.json()
-                        logger.info(f"Available RVC models: {', '.join(rvc_data)}")
+                    try:
+                        rvc_response = requests.get(f"{self.api_url}/api/rvcmodels", timeout=5)
+                        if rvc_response.status_code == 200:
+                            rvc_data = rvc_response.json()
+                            if isinstance(rvc_data, list):
+                                logger.info(f"Available RVC models: {', '.join(rvc_data)}")
+                            else:
+                                logger.info(f"RVC models response: {rvc_data}")
+                    except Exception as e:
+                        logger.warning(f"Failed to get RVC models: {e}")
             else:
                 logger.error(f"AllTalk TTS server returned status code {response.status_code}")
         except requests.exceptions.RequestException as e:
@@ -94,15 +107,24 @@ class TTSEngine(TTSInterface):
         file_name = self.generate_cache_file_name(file_name_no_ext, self.file_extension)
 
         try:
-            # Always use the standard TTS endpoint first
+            # Prepare the request data according to the API documentation
             data = {
                 "text_input": text,
-                "voice_selection": self.voice,
-                "language_selection": self.language,
-                "output_filename": Path(file_name).stem
+                "character_voice_gen": self.voice,
+                "language": self.language,
+                "output_file_name": Path(file_name).stem,
+                "output_file_timestamp": True,
+                "autoplay": False
             }
 
-            # Send request to standard TTS endpoint
+            # If RVC is enabled, add RVC parameters
+            if self.rvc_enabled and self.rvc_model != "Disabled":
+                logger.info(f"Using RVC voice conversion with model: {self.rvc_model}")
+                data["rvccharacter_voice_gen"] = self.rvc_model
+                data["rvccharacter_pitch"] = self.rvc_pitch
+
+            # Send request to TTS generation endpoint
+            logger.info(f"Sending TTS request with data: {data}")
             response = requests.post(
                 f"{self.api_url}/api/tts-generate",
                 data=data,
@@ -112,72 +134,12 @@ class TTSEngine(TTSInterface):
             # Check if the request was successful
             if response.status_code == 200:
                 response_data = response.json()
+                logger.info(f"TTS response: {response_data}")
 
                 if "output_file_url" in response_data:
-                    # Get the audio file path
+                    # Get the audio file URL
                     audio_url = response_data['output_file_url']
-
-                    # If RVC is enabled, apply RVC to the generated audio
-                    if self.rvc_enabled and self.rvc_model != "Disabled":
-                        logger.info(f"Applying RVC voice conversion with model: {self.rvc_model}")
-
-                        # Extract the file name from the URL
-                        # The URL is typically in the format "/api/audio/filename.wav"
-                        audio_file_name = os.path.basename(audio_url)
-
-                        # For voice2rvc, we need to use the full path relative to the outputs directory
-                        # The error suggests the file is in the "outputs" directory
-                        audio_file_path = f"outputs/{audio_file_name}"
-
-                        # Create output path for RVC-processed audio
-                        output_file_name = f"rvc_{Path(file_name).stem}.{self.file_extension}"
-                        output_rvc_path = f"outputs/{output_file_name}"
-
-                        logger.info(f"Using input file path: {audio_file_path}")
-                        logger.info(f"Using output file path: {output_rvc_path}")
-
-                        # Prepare RVC request data
-                        rvc_data = {
-                            "input_tts_path": audio_file_path,
-                            "output_rvc_path": output_rvc_path,
-                            "pth_name": self.rvc_model,
-                            "pitch": str(self.rvc_pitch),
-                            "method": "harvest"  # Default method
-                        }
-
-                        # Send request to voice2rvc endpoint
-                        rvc_response = requests.post(
-                            f"{self.api_url}/api/voice2rvc",
-                            data=rvc_data,
-                            timeout=120
-                        )
-
-                        if rvc_response.status_code == 200:
-                            rvc_response_data = rvc_response.json()
-
-                            if "status" in rvc_response_data and rvc_response_data["status"] == "success":
-                                if "output_path" in rvc_response_data:
-                                    # The output_path from the response is the full path to the processed file
-                                    # We need to extract just the filename for the API URL
-                                    output_path = rvc_response_data["output_path"]
-                                    logger.info(f"RVC processing returned output path: {output_path}")
-
-                                    # Extract just the filename from the output path
-                                    output_filename = os.path.basename(output_path)
-
-                                    # Update the audio URL to the RVC-processed audio
-                                    audio_url = f"/api/audio/{output_filename}"
-                                    logger.info(f"RVC processing successful, new audio URL: {audio_url}")
-                                else:
-                                    # If no output_path is provided, use our predefined output filename
-                                    logger.warning(f"RVC processing did not return an output path: {rvc_response_data}")
-                                    audio_url = f"/api/audio/{output_file_name}"
-                                    logger.info(f"Using fallback audio URL: {audio_url}")
-                            else:
-                                logger.warning(f"RVC processing returned non-success status: {rvc_response_data}")
-                        else:
-                            logger.error(f"Failed to apply RVC: {rvc_response.status_code}")
-                            logger.error(f"RVC Response: {rvc_response.text}")
+                    logger.info(f"Audio URL: {audio_url}")
 
                     # Get the audio file from the server
                     audio_response = requests.get(
@@ -189,9 +151,11 @@ class TTSEngine(TTSInterface):
                         # Save the audio content to a file
                         with open(file_name, "wb") as audio_file:
                             audio_file.write(audio_response.content)
+                        logger.info(f"Audio saved to: {file_name}")
                         return file_name
                     else:
                         logger.error(f"Failed to get audio file: {audio_response.status_code}")
+                        logger.error(f"Audio Response: {audio_response.text}")
                         return None
                 else:
                     logger.error(f"Unexpected response format: {response_data}")
