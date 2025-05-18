@@ -121,20 +121,24 @@ class TTSEngine(TTSInterface):
                     if self.rvc_enabled and self.rvc_model != "Disabled":
                         logger.info(f"Applying RVC voice conversion with model: {self.rvc_model}")
 
-                        # Extract the file name from the URL
-                        audio_file_name = os.path.basename(audio_url)
+                        # Extract the file path from the URL
+                        audio_file_path = audio_url.lstrip('/')
+
+                        # Create output path for RVC-processed audio
+                        output_rvc_path = f"rvc_{Path(file_name).stem}.{self.file_extension}"
 
                         # Prepare RVC request data
                         rvc_data = {
-                            "input_audio": audio_file_name,
-                            "rvc_model": self.rvc_model,
-                            "pitch": self.rvc_pitch,
-                            "output_format": self.file_extension
+                            "input_tts_path": audio_file_path,
+                            "output_rvc_path": output_rvc_path,
+                            "pth_name": self.rvc_model,
+                            "pitch": str(self.rvc_pitch),
+                            "method": "harvest"  # Default method
                         }
 
-                        # Send request to RVC endpoint
+                        # Send request to voice2rvc endpoint
                         rvc_response = requests.post(
-                            f"{self.api_url}/api/tts-apply-rvc",
+                            f"{self.api_url}/api/voice2rvc",
                             data=rvc_data,
                             timeout=120
                         )
@@ -142,12 +146,16 @@ class TTSEngine(TTSInterface):
                         if rvc_response.status_code == 200:
                             rvc_response_data = rvc_response.json()
 
-                            if "output_file_url" in rvc_response_data:
-                                # Update the audio URL to the RVC-processed audio
-                                audio_url = rvc_response_data['output_file_url']
-                                logger.info(f"RVC processing successful, new audio URL: {audio_url}")
+                            if "status" in rvc_response_data and rvc_response_data["status"] == "success":
+                                if "output_path" in rvc_response_data:
+                                    # Update the audio URL to the RVC-processed audio
+                                    # The output_path is relative to the outputs directory
+                                    audio_url = f"/api/audio/{output_rvc_path}"
+                                    logger.info(f"RVC processing successful, new audio URL: {audio_url}")
+                                else:
+                                    logger.warning(f"RVC processing did not return an output path: {rvc_response_data}")
                             else:
-                                logger.warning(f"RVC processing did not return an output file URL: {rvc_response_data}")
+                                logger.warning(f"RVC processing returned non-success status: {rvc_response_data}")
                         else:
                             logger.error(f"Failed to apply RVC: {rvc_response.status_code}")
                             logger.error(f"RVC Response: {rvc_response.text}")
