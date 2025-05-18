@@ -48,9 +48,19 @@ class Live2dModel:
         self.emo_map: dict = {
             k.lower(): v for k, v in self.model_info["emotionMap"].items()
         }
-        self.emo_str: str = " ".join([f"[{key}]," for key in self.emo_map.keys()])
-        # emo_str is a string of the keys in the emoMap dictionary. The keys are enclosed in square brackets.
-        # example: `"[fear], [anger], [disgust], [sadness], [joy], [neutral], [surprise]"`
+
+        # Generate emotion string with both formats: [emotion] and [emotion:intensity]
+        emotion_examples = []
+        for key in self.emo_map.keys():
+            # Add basic format
+            emotion_examples.append(f"[{key}]")
+            # Add intensity format examples
+            emotion_examples.append(f"[{key}:0.3]")
+            emotion_examples.append(f"[{key}:0.7]")
+
+        self.emo_str: str = " ".join([f"{example}," for example in emotion_examples])
+        # emo_str is a string of the keys in the emoMap dictionary with examples of intensity values.
+        # example: `"[fear], [fear:0.3], [fear:0.7], [anger], [anger:0.3], [anger:0.7], ..."`
 
     def _load_file_content(self, file_path: str) -> str:
         """Load the content of a file with robust encoding handling."""
@@ -145,35 +155,57 @@ class Live2dModel:
 
     def extract_emotion(self, str_to_check: str) -> list:
         """
-        Check the input string for any emotion keywords and return a list of values (the expression index) of the emotions found in the string.
+        Check the input string for any emotion keywords and return a list of tuples containing
+        the expression index and intensity value of the emotions found in the string.
 
         Parameters:
             str_to_check (str): The string to check for emotions.
 
         Returns:
-            list: A list of values of the emotions found in the string. An empty list is returned if no emotions are found.
+            list: A list of tuples (expression_index, intensity_value) of the emotions found in the string.
+                 An empty list is returned if no emotions are found.
+                 For backward compatibility, if no intensity is specified, it defaults to 1.0.
         """
+        import re
+
+        # Regular expression to match both formats:
+        # [emotion] and [emotion:intensity]
+        emotion_pattern = r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]'
 
         expression_list = []
         str_to_check = str_to_check.lower()
 
-        i = 0
-        while i < len(str_to_check):
-            if str_to_check[i] != "[":
-                i += 1
-                continue
-            for key in self.emo_map.keys():
-                emo_tag = f"[{key}]"
-                if str_to_check[i : i + len(emo_tag)] == emo_tag:
-                    expression_list.append(self.emo_map[key])
-                    i += len(emo_tag) - 1
-                    break
-            i += 1
+        # Find all emotion tags in the text
+        matches = re.finditer(emotion_pattern, str_to_check)
+
+        for match in matches:
+            emotion = match.group(1)
+            intensity_str = match.group(2)
+
+            # Check if the emotion exists in our emotion map
+            if emotion in self.emo_map:
+                # Get the expression index
+                expression_index = self.emo_map[emotion]
+
+                # Parse intensity value, default to 1.0 if not specified
+                intensity = 1.0
+                if intensity_str:
+                    try:
+                        intensity = float(intensity_str)
+                        # Clamp intensity to valid range [0.0, 1.0]
+                        intensity = max(0.0, min(1.0, intensity))
+                    except ValueError:
+                        # If conversion fails, use default intensity
+                        intensity = 1.0
+
+                expression_list.append((expression_index, intensity))
+
         return expression_list
 
     def remove_emotion_keywords(self, target_str: str) -> str:
         """
         Remove the emotion keywords from the input string and return the cleaned string.
+        Handles both [emotion] and [emotion:intensity] formats.
 
         Parameters:
             str_to_check (str): The string to check for emotions.
@@ -181,14 +213,43 @@ class Live2dModel:
         Returns:
             str: The cleaned string with the emotion keywords removed.
         """
+        import re
 
-        lower_str = target_str.lower()
+        # Regular expression to match both formats:
+        # [emotion] and [emotion:intensity]
+        emotion_pattern = r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]'
 
-        for key in self.emo_map.keys():
-            lower_key = f"[{key}]".lower()
-            while lower_key in lower_str:
-                start_index = lower_str.find(lower_key)
-                end_index = start_index + len(lower_key)
-                target_str = target_str[:start_index] + target_str[end_index:]
-                lower_str = lower_str[:start_index] + lower_str[end_index:]
-        return target_str
+        # Replace all emotion tags with empty string
+        cleaned_str = re.sub(emotion_pattern, '', target_str)
+
+        return cleaned_str
+
+    def get_interpolated_expression(self, expression_index: int, intensity: float) -> dict:
+        """
+        Generate interpolated expression parameters based on intensity.
+
+        This method interpolates between the neutral expression (index 0) and the target emotion
+        based on the provided intensity value.
+
+        Parameters:
+            expression_index (int): The index of the target expression.
+            intensity (float): The intensity value between 0.0 and 1.0.
+
+        Returns:
+            dict: A dictionary containing the interpolated expression parameters.
+                 Format: {"expression_index": expression_index, "intensity": intensity}
+
+        Note:
+            The actual interpolation of expression parameters is handled by the frontend.
+            This method simply packages the expression index and intensity for transmission.
+        """
+        # Ensure intensity is within valid range
+        intensity = max(0.0, min(1.0, intensity))
+
+        # Create a dictionary with the expression index and intensity
+        interpolated_expression = {
+            "expression_index": expression_index,
+            "intensity": intensity
+        }
+
+        return interpolated_expression
