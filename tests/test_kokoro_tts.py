@@ -142,11 +142,12 @@ def list_available_voices():
     print("- jf_gongitsune (Japanese female voice)")
     print("- jf_nezumi (Japanese female voice)")
     print("- jf_tebukuro (Japanese female voice)")
-    print("\nOther Voices:")
-    print("- af_heart (African female voice)")
-    print("- en_us_001 to en_us_008 (English US voices)")
-    print("- zh_001 to zh_010 (Chinese voices)")
-    print("\nFor more voices, check the Kokoro-82M documentation.")
+    print("\nChinese Female Voices:")
+    print("- zf_xiaobei (Chinese female voice)")
+    print("- zf_xiaoni (Chinese female voice)")
+    print("- zf_xiaoxiao (Chinese female voice)")
+    print("- zf_xiaoyi (Chinese female voice)")
+    print("\nNote: These are the only voices available in this installation.")
 
 
 if __name__ == "__main__":
@@ -155,7 +156,7 @@ if __name__ == "__main__":
     parser.add_argument("--text", help="Text to synthesize")
     parser.add_argument("--output", help="Path to save the generated audio file")
     parser.add_argument("--no-play", action="store_true", help="Don't attempt to play the audio")
-    parser.add_argument("--voice", help="Voice to use (e.g., af_heart, jf_alpha, jf_gongitsune, jf_nezumi, jf_tebukuro)")
+    parser.add_argument("--voice", help="Voice to use (e.g., jf_alpha, jf_gongitsune, jf_nezumi, jf_tebukuro, zf_xiaobei)")
     parser.add_argument("--list-voices", action="store_true", help="List available voices")
 
     args = parser.parse_args()

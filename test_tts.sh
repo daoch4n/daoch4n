@@ -92,9 +92,10 @@ if [ "$HELP" = true ]; then
     echo ""
     echo "Examples:"
     echo "  ./test_tts.sh --list-voices                  # List all available voices"
-    echo "  ./test_tts.sh --voice jf_alpha               # Test Japanese female alpha voice"
-    echo "  ./test_tts.sh --engine alltalk --voice en_US # Test AllTalk TTS with en_US voice"
-    echo "  ./test_tts.sh --engine alltalk --rvc-enabled --rvc-model \"daoko_model\" # Test with RVC"
+    echo "  ./test_tts.sh --voice jf_alpha               # Test Japanese female alpha voice (recommended for Daoko)"
+    echo "  ./test_tts.sh --voice jf_gongitsune          # Test Japanese female gongitsune voice"
+    echo "  ./test_tts.sh --voice zf_xiaobei             # Test Chinese female xiaobei voice"
+    echo "  ./test_tts.sh --engine alltalk --rvc-enabled --rvc-model \"daoko[24]_16hs_1bs_SPLICED_NPROC_40k_v1\" # Test with RVC"
     echo ""
     exit 0
 fi
@@ -208,9 +209,12 @@ test_kokoro() {
         if [[ "$VOICE" == jf_* ]]; then
             # Japanese text for Japanese voices
             TEXT="こんにちは、私はダオコです。よろしくお願いします。[joy:0.8]"
+        elif [[ "$VOICE" == zf_* ]]; then
+            # Chinese text for Chinese voices
+            TEXT="你好，我是道子。很高兴认识你！[joy:0.8]"
         else
-            # English text for other voices
-            TEXT="Hello, I'm Daoko! I'm so happy to meet you! [joy:0.8]"
+            # Default to Japanese text
+            TEXT="こんにちは、私はダオコです。よろしくお願いします。[joy:0.8]"
         fi
     fi
 
