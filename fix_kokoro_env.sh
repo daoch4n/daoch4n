@@ -64,10 +64,13 @@ else
     log "pyopenjtalk is already installed, skipping."
 fi
 
-# Install fugashi for Japanese text processing
+# Install MeCab and fugashi for Japanese text processing
 if ! is_package_installed "fugashi"; then
-    log "Installing fugashi for Japanese text processing..."
-    python -m pip install fugashi
+    log "Installing MeCab and fugashi for Japanese text processing..."
+    # Install MeCab system dependencies
+    sudo apt-get update && sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8
+    # Install fugashi with MeCab dictionary
+    python -m pip install fugashi[unidic]
 else
     log "fugashi is already installed, skipping."
 fi
