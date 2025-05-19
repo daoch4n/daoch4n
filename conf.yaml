@@ -1,74 +1,8 @@
-SYSTEM_CONFIG:
-  CONF_NAME: "alltalk_tts_rvc"
-  CONF_UID: "alltalk_tts_rvc"
-
-#  ============== Voice Interaction Settings ==============
-
-# === Automatic Speech Recognition ===
-VOICE_INPUT_ON: true
-# Put your mic in the browser or in the terminal? (would increase latency)
-MIC_IN_BROWSER: false # Deprecated and useless now. Do not enable it. Bad things will happen.
-
-# speech to text model options: "Faster-Whisper", "WhisperCPP", "Whisper", "AzureASR", "FunASR", "GroqWhisperASR", "SherpaOnnxASR"
-ASR_MODEL: "Faster-Whisper"
-
-# === Voice Activity Detection ===
-VAD_MODEL: "silero_vad"
-silero_vad:
-  threshold: 0.5
-  min_speech_duration_ms: 250
-  min_silence_duration_ms: 100
-  window_size_samples: 512
-  speech_pad_ms: 30
-
-# === Faster-Whisper ===
-Faster-Whisper:
-  model_path: "distil-medium.en"
-  language: "en"
-  device: "auto"
-
-# ============== Text to Speech ==============
-# TTS configuration is now in the tts_config section below
-
-# ============== Character Settings ==============
-CHARACTER_CONFIG:
-  CONF_NAME: "AllTalk TTS with RVC"
-  CONF_UID: "alltalk_tts_rvc"
-  PERSONA_NAME: "deprecated"
-  PERSONA_PROMPT: |
-    This section is deprecated. The active persona is now defined in the DAOKO.MD
-
-# ============== LLM Settings ==============
-LLM_MODEL: "OpenAICompatible"
-# LLM model options: "OpenAICompatible", "Claude", "LlamaCpp"
-
-OpenAICompatible:
-  base_url: "http://localhost:1234/v1"
-  model: "gpt-3.5-turbo"
-  llm_api_key: "sk-111111111111111111111111111111111111111111111111"
-
-# ============== Live2D Settings ==============
-LIVE2D_CONFIG:
-  LIVE2D_BACKEND: "pixi"
-  LIVE2D_MODEL_PATH: "live2d-models/shizuku/shizuku.model.json"
-  LIVE2D_EXPRESSION_PATH: "live2d-models/shizuku/expressions"
-  LIVE2D_IDLE_MOTION_GROUP: "idle"
-  LIVE2D_IDLE_MOTION_PRIORITY: 1
-  LIVE2D_EXPRESSION_MAP:
-    neutral: "f01.exp.json"
-    fear: "f02.exp.json"
-    anger: "f03.exp.json"
-    joy: "f04.exp.json"
-    sadness: "f02.exp.json"
-    surprise: "f04.exp.json"
-    disgust: "f03.exp.json"
-    smirk: "f04.exp.json"
 system_config:
   conf_version: 'v1.1.1'
   host: '0.0.0.0' # use 0.0.0.0 if you want other devices to access this page
   port: 12393
-  # New setting for alternative configurations
-  config_alts_dir: 'characters'
+  # No alternative configurations needed - using only DAOKO.MD
   # Tool prompts that will be appended to the persona prompt
   tool_prompts:
     # This will be appended to the end of system prompt to let LLM include keywords to control facial expressions.
@@ -76,16 +10,30 @@ system_config:
     live2d_expression_prompt: 'live2d_expression_prompt'
     # Enable think_tag_prompt to let LLMs without thinking output show inner thoughts, mental activities and actions (in parentheses format) without voice synthesis. See think_tag_prompt for more details.
     # think_tag_prompt: 'think_tag_prompt'
-  group_conversation_prompt: 'group_conversation_prompt' # When using group conversation, this prompt will be added to the memory of each AI participant.
+  # No group conversation needed for single character
 
-# configuration for the default character
+  mcp_config:
+    enabled: false # Set to true to enable MCP integration
+    default_timeout: 10.0 # Default timeout for MCP requests in seconds
+    user_consent_required: true # Whether user consent is required for tool execution
+    servers: [] # List of MCP servers to connect to
+    # Example server configuration:
+    # servers:
+    #   - name: "animation-server"
+    #     url: "http://localhost:8080"
+    #     api_key: "your-api-key"
+    #     enabled: true
+    #     server_type: "animation"
+    #     description: "Server for Live2D animations"
+
+# Single character configuration
 character_config:
-  conf_name: 'daoch4n' # The name of character configuration file.
-  conf_uid: 'daoch4n' # The unique identifier of character configuration.
+  conf_name: 'daoch4n' # Character name
+  conf_uid: 'daoch4n' # Unique identifier
   live2d_model_name: 'shizuku-local' # The name of Live2D model. Must be the same as the corresponding name in model_dict.json
-  character_name: 'daoch4n' # Will be used in the group conversation and the display name of the AI.
-  avatar: 'daoch4n.png' # Suggest using a square image for the avatar. Save it in the avatars folder. Leave blank to use the first letter of the character name as the avatar.
-  human_name: 'user' # Will be used in the group conversation and the display name of the human.
+  character_name: 'daoch4n' # Display name of the AI
+  avatar: 'daoch4n.png' # Avatar image in the avatars folder
+  human_name: 'user' # Display name for the human user
 
   # ============== Prompts ==============
 
@@ -144,10 +92,12 @@ character_config:
 
       gemini_live_agent:
         api_key: 'AIzaSyAJA2znNF2Xp-6vztj2bSmP-oskQSVTOvY' # Replace with your Gemini API key
-        model_name: 'gemini-2.0-flash-live-001' # The Gemini Live model to use
+        model_name: 'gemini-2.0-flash-live-preview-04-09' # The Gemini Live preview model to use
         language_code: 'ja-JP' # Language code for speech (e.g., en-US, ja-JP)
         voice_name: 'Kore' # Gemini voice name (e.g., Puck, Charon, Kore)
-        system_instruction: "You are a cheerful and helpful VTuber assistant named Daoko. Respond concisely. Express emotions using tags like [joy:0.7] or [surprise:0.3] in your speech."
+        system_instruction: "You are a cheerful and helpful VTuber assistant named
+          Daoko. Respond concisely. Express emotions using tags like [joy:0.7] or
+          [surprise:0.3] in your speech."
 
         # Voice Activity Detection settings
         start_of_speech_sensitivity: "START_SENSITIVITY_MEDIUM"
@@ -157,15 +107,15 @@ character_config:
         # Tool configurations
         enable_function_calling: true
         function_declarations:
-          - name: "get_weather"
-            description: "Get the current weather for a location"
-            parameters:
-              type: "object"
-              properties:
-                location:
-                  type: "string"
-                  description: "The city and state, e.g., San Francisco, CA"
-              required: ["location"]
+        - name: "get_weather"
+          description: "Get the current weather for a location"
+          parameters:
+            type: "object"
+            properties:
+              location:
+                type: "string"
+                description: "The city and state, e.g., San Francisco, CA"
+            required: ["location"]
         enable_code_execution: true
         enable_google_search: true
 
@@ -485,7 +435,7 @@ character_config:
     # pip install sherpa-onnx
     # documentation: https://k2-fsa.github.io/sherpa/onnx/index.html
     # TTS models download: https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models
-    # see config_alts for more examples
+    # TTS configuration
     sherpa_onnx_tts:
       vits_model: './models/sherpa-onnx-japanese-vits-models/ja-jp-xiaoze-vits-epoch-1095-steps-96000/model.onnx'
       vits_lexicon: './models/sherpa-onnx-japanese-vits-models/ja-jp-xiaoze-vits-epoch-1095-steps-96000/lexicon.txt'
@@ -541,4 +491,5 @@ character_config:
         region: 'ap-guangzhou'
         source_lang: 'zh'
         target_lang: 'ja'
-  persona_prompt: '' # deprecated , load from .MD
+
+  # persona_prompt is now loaded from DAOKO.MD
