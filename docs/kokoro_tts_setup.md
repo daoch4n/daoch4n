@@ -4,7 +4,7 @@ This document describes how to set up the Kokoro TTS engine for the project.
 
 ## Overview
 
-The Kokoro-82M TTS model is now integrated with the main project environment. This setup uses symbolic links to the model files to avoid duplicating large files.
+The Kokoro-82M TTS model is integrated with the main project environment using uv. This setup uses symbolic links to the model files to avoid duplicating large files.
 
 ## Prerequisites
 
@@ -12,20 +12,27 @@ The Kokoro-82M TTS model is now integrated with the main project environment. Th
 2. Kokoro-82M model files (located at ~/alltalk_tts/models/kokoro)
 3. uv package manager (for managing Python dependencies)
 
-## Setup Steps
+## Simplified Setup
+
+The easiest way to set up the Kokoro TTS engine is to use the provided test script:
+
+```bash
+./test_kokoro.sh
+```
+
+This script will:
+1. Create symbolic links to the Kokoro-82M model files
+2. Create or use the main virtual environment
+3. Install the required packages using uv
+4. Test all Japanese female voices with sample text
+
+## Manual Setup Steps
+
+If you prefer to set up the Kokoro TTS engine manually, follow these steps:
 
 ### 1. Create Symbolic Links to Model Files
 
-First, create a directory for the model files and set up symbolic links:
-
-```bash
-mkdir -p models/kokoro
-ln -sf ~/alltalk_tts/models/kokoro/* models/kokoro/
-```
-
-### 2. Set Up Symbolic Links for Hugging Face Cache
-
-Run the setup script to create symbolic links in the Hugging Face cache directory:
+The setup script will automatically create symbolic links if they don't exist:
 
 ```bash
 ./setup_kokoro_symlink.sh
@@ -33,27 +40,30 @@ Run the setup script to create symbolic links in the Hugging Face cache director
 
 This script creates symbolic links from the Hugging Face cache directory to the Kokoro-82M model files.
 
-### 3. Install Required Packages
+### 2. Install Required Packages
 
-Make sure the required packages are installed in the main environment:
+Install the required packages in the main environment:
 
 ```bash
 source .venv/bin/activate
 uv pip install kokoro
 uv pip install git+https://github.com/hexgrad/misaki.git
+uv pip install -e .
 ```
 
 The Misaki tokenizer is required for proper Japanese text processing.
 
-### 4. Testing the Setup
+### 3. Testing Specific Voices
 
-You can test the Kokoro TTS engine using the test script:
+You can test specific voices using the test script:
 
 ```bash
-./test_kokoro.sh
-```
+# Test a specific voice
+./test_kokoro.sh jf_alpha "こんにちは、私はダオコです。[joy:0.8]"
 
-This script will test all Japanese female voices with sample text.
+# List all available voices
+./test_kokoro.sh --list
+```
 
 ### 5. Using Kokoro TTS in Your Code
 
