@@ -1,5 +1,9 @@
 import os
 import shutil
+import logging
+
+# Configure logger
+logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI
 from starlette.middleware.cors import CORSMiddleware
@@ -86,9 +90,14 @@ class WebSocketServer:
         )
 
         # Mount main frontend last (as catch-all)
+        frontend_dir = "frontend-src/dist/web"
+        if not os.path.exists(frontend_dir):
+            logger.error(f"Frontend build directory '{frontend_dir}' not found. Please run 'npm run build:web' in the frontend-src directory.")
+            # Continue with a warning rather than crashing the server
+
         self.app.mount(
             "/",
-            CustomStaticFiles(directory="frontend", html=True),
+            CustomStaticFiles(directory=frontend_dir, html=True),
             name="frontend",
         )
 
