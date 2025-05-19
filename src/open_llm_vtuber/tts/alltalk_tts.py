@@ -168,8 +168,8 @@ class TTSEngine(TTSInterface):
         - -12 semitones: lowers pitch by one octave (female to male voice)
         - 0 semitones: keeps pitch unchanged
 
-        We'll use subtle adjustments to maintain Daoko's natural voice characteristics
-        while still conveying emotional variations.
+        Since the RVC model is already trained on Daoko's voice, we use 0 as the base pitch
+        and only apply subtle adjustments for emotional variations.
 
         Args:
             emotion: The emotion style
@@ -178,8 +178,8 @@ class TTSEngine(TTSInterface):
         Returns:
             Pitch adjustment for AllTalk TTS (in semitones)
         """
-        # Default pitch adjustment is the configured pitch
-        base_pitch = self.rvc_pitch
+        # Always use 0 as the base pitch since RVC is already trained on Daoko's voice
+        base_pitch = 0
 
         # Only apply pitch changes if intensity is significant
         if intensity < 0.3:
