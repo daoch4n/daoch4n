@@ -186,15 +186,11 @@ class GeminiLiveAgent(AgentInterface):
                 logger.info(f"Connecting to Gemini Live API with model {self.model_name}")
                 logger.info(f"Using bidiGenerateContent method via WebSocket connection")
 
-                # Create a context manager for the live connection
-                live_connect = self.client.aio.live.connect(
+                # Connect to the Gemini Live API directly
+                self.gemini_session = await self.client.aio.live.connect(
                     model=self.model_name,
                     config=session_config_copy
                 )
-
-                # Enter the context manager to get the actual session
-                async with live_connect as session:
-                    self.gemini_session = session
 
                 logger.info("Connected to Gemini Live API successfully.")
                 self.is_interrupted = False  # Reset interruption flag on new session
@@ -254,18 +250,21 @@ class GeminiLiveAgent(AgentInterface):
         if self.history_conf_uid and self.history_history_uid and self.gemini_session:
             messages = get_history(self.history_conf_uid, self.history_history_uid)
             if messages:
-                turns = []
-                for msg in messages:
+                # For simplicity, we'll just send the last user message if there is one
+                last_user_msg = None
+                for msg in reversed(messages):
                     if msg["role"] == "human":
-                        turns.append({"role": "user", "parts": [{"text": msg["content"]}]})
-                    elif msg["role"] == "ai":
-                        turns.append({"role": "model", "parts": [{"text": msg["content"]}]})
-                    # Skipping system messages as Gemini's system_instruction is set at session start
-                if turns:
-                    logger.debug(f"Sending {len(turns)} history turns to Gemini.")
+                        last_user_msg = msg["content"]
+                        break
+
+                if last_user_msg:
+                    logger.debug(f"Sending last user message to Gemini: {last_user_msg}")
                     try:
-                        # In the new SDK, we use send_client_content to send history
-                        await self.gemini_session.send_client_content(turns=turns, turn_complete=False)
+                        # Send just the last user message to avoid complexity
+                        await self.gemini_session.send_client_content(
+                            turns={"role": "user", "parts": [{"text": last_user_msg}]},
+                            turn_complete=True
+                        )
                     except Exception as e:
                         logger.warning(f"Failed to send history to Gemini: {e}")
 
@@ -315,21 +314,13 @@ class GeminiLiveAgent(AgentInterface):
 
         # Use the Live API
         try:
-            # If it's a new session or history wasn't sent yet
-            if not self.session_resumption_handle or (self.history_conf_uid and self.history_history_uid):
-                await self._send_history_to_gemini()
-
             # Send the text input to Gemini
             if text_to_send:
-                # In the new SDK, we use send_client_content to send user messages
+                # Send the user message and mark the turn as complete
                 await self.gemini_session.send_client_content(
                     turns={"role": "user", "parts": [{"text": text_to_send}]},
-                    turn_complete=False  # Keep turn open for potential audio
+                    turn_complete=True
                 )
-
-            # Mark the user's turn as complete if no audio is expected to follow immediately
-            if not self.active_audio_stream and text_to_send:  # if only text was sent
-                await self.gemini_session.send_client_content(turn_complete=True)
 
             # Receive and process responses from Gemini
             accumulated_transcript = ""
