@@ -153,10 +153,13 @@ setup_kokoro() {
             uv pip install pyopenjtalk
         fi
 
-        # Install fugashi for Japanese text processing
+        # Install MeCab and fugashi for Japanese text processing
         if ! is_package_installed "fugashi"; then
-            log "Installing fugashi for Japanese text processing..."
-            uv pip install fugashi
+            log "Installing MeCab and fugashi for Japanese text processing..."
+            # Install MeCab system dependencies
+            sudo apt-get update && sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8
+            # Install fugashi with MeCab dictionary
+            uv pip install fugashi[unidic]
         fi
 
         # Install jaconv for Japanese text conversion
