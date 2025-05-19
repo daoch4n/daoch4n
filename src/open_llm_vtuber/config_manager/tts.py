@@ -311,6 +311,7 @@ class AllTalkTTSConfig(I18nMixin):
     rvc_model: str = Field("Disabled", alias="rvc_model")
     rvc_pitch: int = Field(0, alias="rvc_pitch")
     output_format: str = Field("wav", alias="output_format")
+    emotion_mapping: Optional[Dict[str, str]] = Field(None, alias="emotion_mapping")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "api_url": Description(
@@ -333,6 +334,10 @@ class AllTalkTTSConfig(I18nMixin):
         ),
         "output_format": Description(
             en="Output audio format (wav, mp3, etc.)", zh="输出音频格式（wav、mp3 等）"
+        ),
+        "emotion_mapping": Description(
+            en="Mapping from emotion tags to AllTalk voice styles",
+            zh="从情感标签到 AllTalk 语音风格的映射"
         ),
     }
 

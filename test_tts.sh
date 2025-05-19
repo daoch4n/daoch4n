@@ -13,6 +13,9 @@ LIST_VOICES=false
 PLAY_AUDIO=true
 VERBOSE=false
 HELP=false
+RVC_ENABLED=false
+RVC_MODEL=""
+RVC_PITCH=0
 
 # Parse command-line arguments
 while [[ $# -gt 0 ]]; do
@@ -45,6 +48,18 @@ while [[ $# -gt 0 ]]; do
             VERBOSE=true
             shift
             ;;
+        --rvc-enabled)
+            RVC_ENABLED=true
+            shift
+            ;;
+        --rvc-model)
+            RVC_MODEL="$2"
+            shift 2
+            ;;
+        --rvc-pitch)
+            RVC_PITCH="$2"
+            shift 2
+            ;;
         --help|-h)
             HELP=true
             shift
@@ -70,12 +85,16 @@ if [ "$HELP" = true ]; then
     echo "  --list-voices, -l      List available voices and exit"
     echo "  --no-play, -n          Don't attempt to play the audio"
     echo "  --verbose              Show verbose output"
+    echo "  --rvc-enabled          Enable RVC voice conversion (for alltalk engine)"
+    echo "  --rvc-model MODEL      RVC model to use for voice conversion"
+    echo "  --rvc-pitch PITCH      Pitch adjustment for RVC voice conversion [default: 0]"
     echo "  --help, -h             Show this help message and exit"
     echo ""
     echo "Examples:"
     echo "  ./test_tts.sh --list-voices                  # List all available voices"
     echo "  ./test_tts.sh --voice jf_alpha               # Test Japanese female alpha voice"
     echo "  ./test_tts.sh --engine alltalk --voice en_US # Test AllTalk TTS with en_US voice"
+    echo "  ./test_tts.sh --engine alltalk --rvc-enabled --rvc-model \"daoko_model\" # Test with RVC"
     echo ""
     exit 0
 fi
@@ -99,34 +118,34 @@ setup_kokoro() {
     HF_CACHE_DIR="/home/vi/.cache/huggingface/hub"
     MODEL_DIR="models--hexgrad--Kokoro-82M"
     SNAPSHOT_HASH="496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4"
-    
+
     if [ -d "$HF_CACHE_DIR/$MODEL_DIR/snapshots/$SNAPSHOT_HASH" ]; then
         log "Kokoro model symlinks already exist, skipping setup."
     else
         log "Setting up symbolic links to Kokoro-82M model files..."
         ./setup_kokoro_symlink.sh
     fi
-    
+
     # Check if we're using the main environment or the kokoro-specific environment
     if [ -d ".venv/bin" ]; then
         log "Using main virtual environment..."
         source .venv/bin/activate
-        
+
         # Check if required packages are installed
         if ! is_package_installed "kokoro"; then
             log "Installing Kokoro package..."
             uv pip install kokoro
         fi
-        
+
         if ! is_package_installed "misaki"; then
             log "Installing Misaki tokenizer..."
             uv pip install git+https://github.com/hexgrad/misaki.git
-            
+
             # Install additional dependencies for Misaki
             uv pip install spacy
             python -m spacy download en_core_web_sm
         fi
-        
+
         # Install the project in development mode if needed
         if ! is_package_installed "open_llm_vtuber"; then
             log "Installing project in development mode..."
@@ -138,10 +157,10 @@ setup_kokoro() {
             log "Creating Kokoro-specific virtual environment..."
             python -m venv .venv/kokoro-env
         fi
-        
+
         log "Activating Kokoro-specific virtual environment..."
         source .venv/kokoro-env/bin/activate
-        
+
         # Check if required packages are installed
         if ! is_package_installed "kokoro" || ! is_package_installed "misaki"; then
             log "Installing required packages..."
@@ -162,10 +181,10 @@ setup_alltalk() {
             log "Creating AllTalk-specific virtual environment..."
             python -m venv .venv/alltalk-env
         fi
-        
+
         log "Activating AllTalk-specific virtual environment..."
         source .venv/alltalk-env/bin/activate
-        
+
         # Install required packages
         log "Installing required packages..."
         pip install requests
@@ -177,7 +196,7 @@ setup_alltalk() {
 test_kokoro() {
     # Make sure the cache directory exists
     mkdir -p cache
-    
+
     # Set up default text if not provided
     if [ -z "$TEXT" ]; then
         if [[ "$VOICE" == jf_* ]]; then
@@ -188,30 +207,30 @@ test_kokoro() {
             TEXT="Hello, I'm Daoko! I'm so happy to meet you! [joy:0.8]"
         fi
     fi
-    
+
     # Set up command-line arguments for the Python script
     ARGS=""
-    
+
     if [ "$LIST_VOICES" = true ]; then
         ARGS="--list-voices"
     else
         if [ -n "$VOICE" ]; then
             ARGS="$ARGS --voice $VOICE"
         fi
-        
+
         if [ -n "$TEXT" ]; then
             ARGS="$ARGS --text \"$TEXT\""
         fi
-        
+
         if [ -n "$OUTPUT" ]; then
             ARGS="$ARGS --output $OUTPUT"
         fi
-        
+
         if [ "$PLAY_AUDIO" = false ]; then
             ARGS="$ARGS --no-play"
         fi
     fi
-    
+
     # Run the test script
     log "Running Kokoro TTS test with arguments: $ARGS"
     eval "python tests/test_kokoro_tts.py $ARGS"
@@ -221,27 +240,40 @@ test_kokoro() {
 test_alltalk() {
     # Make sure the cache directory exists
     mkdir -p cache
-    
+
     # Set up default text if not provided
     if [ -z "$TEXT" ]; then
         TEXT="Hello, this is a test of the AllTalk TTS integration."
     fi
-    
+
     # Set up command-line arguments for the Python script
     ARGS=""
-    
+
     if [ -n "$VOICE" ]; then
         ARGS="$ARGS --voice $VOICE"
     fi
-    
+
     if [ -n "$TEXT" ]; then
         ARGS="$ARGS --text \"$TEXT\""
     fi
-    
+
     if [ -n "$OUTPUT" ]; then
         ARGS="$ARGS --output $OUTPUT"
     fi
-    
+
+    # Add RVC parameters if enabled
+    if [ "$RVC_ENABLED" = true ]; then
+        ARGS="$ARGS --rvc-enabled"
+
+        if [ -n "$RVC_MODEL" ]; then
+            ARGS="$ARGS --rvc-model \"$RVC_MODEL\""
+        fi
+
+        if [ -n "$RVC_PITCH" ]; then
+            ARGS="$ARGS --rvc-pitch $RVC_PITCH"
+        fi
+    fi
+
     # Run the test script
     log "Running AllTalk TTS test with arguments: $ARGS"
     eval "python tests/test_alltalk_tts.py $ARGS"
