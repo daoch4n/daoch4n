@@ -3,7 +3,6 @@ import io
 import wave
 from typing import AsyncIterator, Optional, List, Dict, Any, Literal, Union, Callable
 from loguru import logger
-import numpy as np
 import json
 
 import google.generativeai as genai
@@ -198,6 +197,10 @@ class GeminiLiveAgent(AgentInterface):
                             session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig()
 
                         # Connect to the Gemini Live API
+                        # The Live API uses bidiGenerateContent under the hood
+                        # Models with 'live' in the name only support this method
+                        logger.info(f"Connecting to Gemini Live API with model {self.model_name}")
+                        logger.info(f"Using bidiGenerateContent method via WebSocket connection")
                         self.gemini_session = await client.aio.live.connect(
                             model=self.model_name,
                             config=session_config_copy
@@ -207,18 +210,41 @@ class GeminiLiveAgent(AgentInterface):
                         self.is_interrupted = False  # Reset interruption flag on new session
                         return  # Successfully connected, no need to try compatibility mode
                 except Exception as e:
-                    logger.warning(f"Failed to connect using full Gemini Live API: {e}")
+                    error_msg = str(e)
+                    logger.warning(f"Failed to connect using full Gemini Live API: {error_msg}")
+
+                    # Provide more specific error information
+                    if "404" in error_msg and "not found" in error_msg:
+                        logger.warning(f"Model '{self.model_name}' not found. Check if the model name is correct.")
+                        logger.warning("Live API models should end with '-live-001' or similar suffix.")
+                    elif "not supported for" in error_msg and "generateContent" in error_msg:
+                        logger.warning(f"Model '{self.model_name}' doesn't support the requested method.")
+                        logger.warning("Live API models only support bidiGenerateContent, not generateContent.")
+                    elif "API key" in error_msg or "authentication" in error_msg.lower():
+                        logger.warning("API key issue. Check if your Gemini API key is valid.")
+
                     logger.warning("Falling back to compatibility mode")
                     self.compatibility_mode = True  # Mark that we're in compatibility mode
 
             # If we're in compatibility mode or the full mode connection failed, use the fallback approach
             try:
                 # Create a model instance for compatibility mode
-                model = genai.GenerativeModel(self.model_name)
+                # Use a different model that supports generateContent
+                # The Live API models (with 'live' in the name) only support bidiGenerateContent
+                # Standard models like gemini-2.0-flash support generateContent
+                compat_model_name = "gemini-2.0-flash"  # This model supports generateContent
 
-                # Log that we're using compatibility mode
-                logger.warning("Using compatibility mode for Gemini")
-                logger.warning("Some Gemini Live features may not be available (no audio streaming)")
+                try:
+                    model = genai.GenerativeModel(compat_model_name)
+                    logger.warning(f"Using compatibility mode with model {compat_model_name}")
+                    logger.warning(f"Original model {self.model_name} only supports bidiGenerateContent (Live API)")
+                    logger.warning("Some Gemini Live features may not be available (no audio streaming)")
+                except Exception as e:
+                    # If gemini-2.0-flash is not available, try gemini-1.5-flash as fallback
+                    logger.warning(f"Failed to initialize {compat_model_name}: {e}")
+                    compat_model_name = "gemini-1.5-flash"
+                    logger.warning(f"Trying fallback model {compat_model_name}")
+                    model = genai.GenerativeModel(compat_model_name)
 
                 # Store the model in the session attribute
                 self.gemini_session = model
@@ -572,6 +598,7 @@ class GeminiLiveAgent(AgentInterface):
                         await self._ensure_session()
 
                         # Generate a response using the model in compatibility mode
+                        # Note: _ensure_session will use gemini-2.0-flash in compatibility mode
                         if self.gemini_session:
                             response = await self.gemini_session.generate_content_async(text_to_send)
                             response_text = response.text
@@ -640,6 +667,7 @@ class GeminiLiveAgent(AgentInterface):
                     await self._ensure_session()
 
                     # Generate a response using the model in compatibility mode
+                    # Note: _ensure_session will use gemini-2.0-flash in compatibility mode
                     if self.gemini_session:
                         response = await self.gemini_session.generate_content_async(text_to_send)
                         response_text = response.text

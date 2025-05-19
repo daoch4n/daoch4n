@@ -136,7 +136,7 @@ class GeminiLiveConfig(I18nMixin, BaseModel):
     """Configuration for the Gemini Live agent."""
 
     api_key: str = Field(..., alias="api_key")
-    model_name: str = Field("gemini-2.0-flash-live-001", alias="model_name")
+    model_name: str = Field("gemini-2.0-flash-live-001", alias="model_name")  # This model ONLY supports bidiGenerateContent (Live API), not generateContent
     language_code: str = Field("en-US", alias="language_code")
     voice_name: Optional[str] = Field("Kore", alias="voice_name")
     system_instruction: Optional[str] = Field(None, alias="system_instruction")
@@ -177,7 +177,8 @@ class GeminiLiveConfig(I18nMixin, BaseModel):
             en="Gemini API Key", zh="Gemini API 密钥"
         ),
         "model_name": Description(
-            en="Gemini Live Model Name", zh="Gemini Live 模型名称"
+            en="Gemini Live Model Name (use gemini-2.0-flash-live-001 for Live API). Live models ONLY support bidiGenerateContent, not generateContent.",
+            zh="Gemini Live 模型名称 (使用 gemini-2.0-flash-live-001 用于 Live API). Live 模型只支持 bidiGenerateContent，不支持 generateContent。"
         ),
         "language_code": Description(
             en="Language code for speech (e.g., en-US, ja-JP)",
