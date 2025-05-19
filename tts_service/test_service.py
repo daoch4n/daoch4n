@@ -16,9 +16,11 @@ def main():
     parser = argparse.ArgumentParser(description="Test TTS microservice")
     parser.add_argument("--url", default="http://localhost:5000", help="URL of the TTS service")
     parser.add_argument("--voice", default="jf_alpha", help="Voice to use")
-    parser.add_argument("--text", default="こんにちは、私はダオコです。[joy:0.8]", help="Text to synthesize")
+    parser.add_argument("--text", default="こんにちは、私はダオコです。[joy:0.8]よろしくお願いします！", help="Text to synthesize")
     parser.add_argument("--output", default=None, help="Output file")
     parser.add_argument("--list-voices", action="store_true", help="List available voices")
+    parser.add_argument("--get-config", action="store_true", help="Get current configuration")
+    parser.add_argument("--update-config", action="store_true", help="Update configuration")
     args = parser.parse_args()
 
     # Create a session
@@ -28,12 +30,12 @@ def main():
     try:
         response = session.get(f"{args.url}/health")
         response.raise_for_status()
-        
+
         data = response.json()
         if data.get("status") != "ok":
             print(f"Error: Service is not healthy: {data}")
             sys.exit(1)
-        
+
         print("Service is healthy")
     except Exception as e:
         print(f"Error checking service health: {e}")
@@ -44,7 +46,7 @@ def main():
         try:
             response = session.get(f"{args.url}/voices")
             response.raise_for_status()
-            
+
             data = response.json()
             print("Available voices:")
             for voice in data.get("voices", []):
@@ -52,10 +54,63 @@ def main():
                     print(f"- {voice} (default)")
                 else:
                     print(f"- {voice}")
-            
+
             sys.exit(0)
         except Exception as e:
             print(f"Error getting available voices: {e}")
+            sys.exit(1)
+
+    # Get current configuration
+    if args.get_config:
+        try:
+            response = session.get(f"{args.url}/config")
+            response.raise_for_status()
+
+            config = response.json()
+            print("Current configuration:")
+            for key, value in config.items():
+                print(f"- {key}: {value}")
+
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error getting configuration: {e}")
+            sys.exit(1)
+
+    # Update configuration
+    if args.update_config:
+        try:
+            # Example configuration update
+            new_config = {
+                "sample_rate": 24000,
+                "output_format": "wav",
+                "emotion_mapping": {
+                    "joy": 1.2,
+                    "sadness": 0.8,
+                    "anger": 1.1,
+                    "fear": 0.9,
+                    "surprise": 1.3,
+                    "disgust": 0.85,
+                    "neutral": 1.0,
+                    "smirk": 1.1
+                }
+            }
+
+            print("Updating configuration...")
+            response = session.post(f"{args.url}/config", json=new_config)
+            response.raise_for_status()
+
+            data = response.json()
+            if data.get("status") == "ok":
+                print("Configuration updated successfully")
+                print("New configuration:")
+                for key, value in data.get("config", {}).items():
+                    print(f"- {key}: {value}")
+            else:
+                print(f"Error updating configuration: {data}")
+
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error updating configuration: {e}")
             sys.exit(1)
 
     # Generate speech
@@ -65,32 +120,32 @@ def main():
             "text": args.text,
             "voice": args.voice
         }
-        
+
         print(f"Generating speech for text: {args.text}")
         print(f"Using voice: {args.voice}")
-        
+
         # Send request to TTS service
         response = session.post(f"{args.url}/tts", json=data)
         response.raise_for_status()
-        
+
         # Create a temporary file if output_path is not provided
         if args.output is None:
             fd, output_path = tempfile.mkstemp(suffix=".wav")
             os.close(fd)
         else:
             output_path = args.output
-        
+
         # Save the audio to a file
         with open(output_path, "wb") as f:
             f.write(response.content)
-        
+
         print(f"Generated audio file: {output_path}")
-        
+
         # Try to play the audio
         try:
             import sounddevice as sd
             import soundfile as sf
-            
+
             print("Playing audio...")
             audio, sr = sf.read(output_path)
             sd.play(audio, sr)

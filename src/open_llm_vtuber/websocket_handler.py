@@ -1,10 +1,12 @@
-from typing import Dict, List, Optional, Callable, TypedDict
+from typing import Dict, List, Optional, Callable, TypedDict, cast
 from fastapi import WebSocket, WebSocketDisconnect
 import asyncio
 import json
 from enum import Enum
 import numpy as np
 from loguru import logger
+
+from .agent.agents.gemini_live_agent import GeminiLiveAgent
 
 from .service_context import ServiceContext
 from .chat_group import (
@@ -449,12 +451,23 @@ class WebSocketHandler:
         self, websocket: WebSocket, client_uid: str, data: WSMessage
     ) -> None:
         """Handle incoming audio data"""
+        context = self.client_contexts[client_uid]
         audio_data = data.get("audio", [])
+
         if audio_data:
-            self.received_data_buffers[client_uid] = np.append(
-                self.received_data_buffers[client_uid],
-                np.array(audio_data, dtype=np.float32),
-            )
+            # If using GeminiLiveAgent, stream audio directly to it
+            if isinstance(context.agent_engine, GeminiLiveAgent):
+                audio_floats = np.array(audio_data, dtype=np.float32)
+                # Convert float32 audio from frontend (typically -1 to 1) to int16 bytes (PCM)
+                audio_int16 = (audio_floats * 32767).astype(np.int16)
+                audio_bytes = audio_int16.tobytes()
+                await context.agent_engine.stream_audio_chunk(audio_bytes)
+            else:
+                # For other agents, buffer the audio as before
+                self.received_data_buffers[client_uid] = np.append(
+                    self.received_data_buffers[client_uid],
+                    np.array(audio_data, dtype=np.float32),
+                )
 
     async def _handle_raw_audio_data(
         self, websocket: WebSocket, client_uid: str, data: WSMessage

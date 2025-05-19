@@ -94,7 +94,7 @@ character_config:
   #  =================== LLM Backend Settings ===================
 
   agent_config:
-    conversation_agent_choice: 'basic_memory_agent'
+    conversation_agent_choice: 'gemini_live_agent'
 
     agent_settings:
       basic_memory_agent:
@@ -141,6 +141,44 @@ character_config:
         host: 'api.hume.ai' # Do not change this in most cases
         config_id: '' # Optional
         idle_timeout: 15 # How many seconds to wait before disconnecting
+
+      gemini_live_agent:
+        api_key: 'AIzaSyAJA2znNF2Xp-6vztj2bSmP-oskQSVTOvY' # Replace with your Gemini API key
+        model_name: 'gemini-2.0-flash-live-001' # The Gemini Live model to use
+        language_code: 'ja-JP' # Language code for speech (e.g., en-US, ja-JP)
+        voice_name: 'Kore' # Gemini voice name (e.g., Puck, Charon, Kore)
+        system_instruction: "You are a cheerful and helpful VTuber assistant named Daoko. Respond concisely. Express emotions using tags like [joy:0.7] or [surprise:0.3] in your speech."
+
+        # Voice Activity Detection settings
+        start_of_speech_sensitivity: "START_SENSITIVITY_MEDIUM"
+        end_of_speech_sensitivity: "END_SENSITIVITY_MEDIUM"
+        silence_duration_ms: 800
+
+        # Tool configurations
+        enable_function_calling: true
+        function_declarations:
+          - name: "get_weather"
+            description: "Get the current weather for a location"
+            parameters:
+              type: "object"
+              properties:
+                location:
+                  type: "string"
+                  description: "The city and state, e.g., San Francisco, CA"
+              required: ["location"]
+        enable_code_execution: true
+        enable_google_search: true
+
+        # Context window compression
+        enable_context_compression: true
+        compression_window_size: 10
+        compression_token_threshold: 4000
+
+        # Audio transcription
+        enable_input_audio_transcription: true
+
+        # Manual VAD control (set to true to use manual activity detection)
+        disable_automatic_vad: false
       # MemGPT Configurations: MemGPT is temporarily removed
       ##
 
@@ -318,7 +356,7 @@ character_config:
       voice: "jf_alpha"  # Japanese female voice for Daoko
       language: "ja"     # Japanese language
       device: "cpu"      # Use CPU to avoid CUDA version conflicts
-      # No need to specify repo_id - will use the default Kokoro-82M model
+      repo_id: "/home/vi/alltalk_tts/models/piper"  # Path to the directory containing kokoro.onnx
       cache_dir: "cache"
       sample_rate: 24000
       output_format: "wav"
