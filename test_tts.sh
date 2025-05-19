@@ -266,7 +266,9 @@ test_alltalk() {
         ARGS="$ARGS --rvc-enabled"
 
         if [ -n "$RVC_MODEL" ]; then
-            ARGS="$ARGS --rvc-model \"$RVC_MODEL\""
+            # Remove quotes from RVC_MODEL for the command line
+            RVC_MODEL_CLEAN=$(echo "$RVC_MODEL" | tr -d '"')
+            ARGS="$ARGS --rvc-model \"$RVC_MODEL_CLEAN\""
         fi
 
         if [ -n "$RVC_PITCH" ]; then
