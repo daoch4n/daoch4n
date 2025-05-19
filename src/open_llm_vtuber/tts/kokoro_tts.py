@@ -199,16 +199,23 @@ class TTSEngine(TTSInterface):
 
         try:
             # Extract emotion from the text
-            emotion_style = self._extract_emotion(text)
+            emotion_style, intensity = self._extract_emotion(text)
 
             # Preprocess text to handle emotion tags and Japanese text
             processed_text = self._preprocess_text(text)
 
-            # Generate audio using Kokoro with the appropriate style
+            # Determine speech parameters based on emotion
+            speed = self._get_speed_for_emotion(emotion_style, intensity)
+            voice = self._get_voice_for_emotion(emotion_style, intensity)
+
+            logger.info(f"Using emotion: {emotion_style} (intensity: {intensity:.2f})")
+            logger.info(f"Speech parameters: voice={voice}, speed={speed}")
+
+            # Generate audio using Kokoro with emotion-appropriate parameters
             generator = self.pipeline(
                 processed_text,
-                voice=self.voice,
-                style=emotion_style
+                voice=voice,
+                speed=speed
             )
 
             # Kokoro returns a generator with (gs, ps, audio) tuples
@@ -227,15 +234,15 @@ class TTSEngine(TTSInterface):
             self._create_silent_audio(file_name, duration=1.0)
             return file_name
 
-    def _extract_emotion(self, text: str) -> str:
+    def _extract_emotion(self, text: str) -> tuple:
         """
-        Extract emotion from text with emotion tags.
+        Extract emotion and intensity from text with emotion tags.
 
         Args:
             text: Text with potential emotion tags
 
         Returns:
-            Emotion style for Kokoro TTS
+            Tuple of (emotion_style, intensity)
         """
         # Extract emotion tags using regex
         import re
@@ -244,19 +251,72 @@ class TTSEngine(TTSInterface):
 
         # Default to neutral if no emotion tags found
         if not matches:
-            return "neutral"
+            return "neutral", 0.0
 
         # Get the dominant emotion (using the first one for simplicity)
         emotion = matches[0].group(1).lower()
         intensity_str = matches[0].group(2)
         intensity = 1.0 if not intensity_str else float(intensity_str)
 
-        # Only apply emotion style if intensity is high enough
-        if intensity < 0.5:
-            return "neutral"
-
         # Map the emotion to Kokoro style if available
-        return self.emotion_mapping.get(emotion, "neutral")
+        emotion_style = self.emotion_mapping.get(emotion, "neutral")
+
+        return emotion_style, intensity
+
+    def _get_speed_for_emotion(self, emotion: str, intensity: float) -> float:
+        """
+        Get appropriate speech speed based on emotion and intensity.
+
+        Args:
+            emotion: The emotion style
+            intensity: The emotion intensity (0.0 to 1.0)
+
+        Returns:
+            Speed parameter for Kokoro TTS
+        """
+        # Default speed is 1.0
+        base_speed = 1.0
+
+        # Only apply speed changes if intensity is significant
+        if intensity < 0.3:
+            return base_speed
+
+        # Scale the effect based on intensity (0.3 to 1.0 mapped to 0.0 to 1.0)
+        scaled_intensity = (intensity - 0.3) / 0.7
+
+        # Apply emotion-specific speed adjustments
+        if emotion in ["happy", "joy", "excited", "surprised"]:
+            # Happy/excited speech is faster
+            return base_speed + (0.3 * scaled_intensity)
+        elif emotion in ["sad", "depressed", "fearful"]:
+            # Sad speech is slower
+            return base_speed - (0.3 * scaled_intensity)
+        elif emotion in ["angry", "disgusted"]:
+            # Angry speech can be slightly faster
+            return base_speed + (0.2 * scaled_intensity)
+        else:
+            # Neutral or unknown emotions use base speed
+            return base_speed
+
+    def _get_voice_for_emotion(self, emotion: str, intensity: float) -> str:
+        """
+        Get appropriate voice based on emotion and intensity.
+
+        For now, we just use the configured voice regardless of emotion.
+        In the future, this could be extended to select different voice files
+        based on emotion, or to blend multiple voice files.
+
+        Args:
+            emotion: The emotion style
+            intensity: The emotion intensity (0.0 to 1.0)
+
+        Returns:
+            Voice parameter for Kokoro TTS
+        """
+        # For now, just use the configured voice
+        # This could be extended in the future to select different voices
+        # based on emotion or to blend multiple voices
+        return self.voice
 
     async def async_generate_audio(self, text: str, file_name_no_ext: Optional[str] = None) -> str:
         """

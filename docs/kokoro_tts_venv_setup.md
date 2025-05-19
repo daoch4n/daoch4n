@@ -141,7 +141,9 @@ When using these voices, the implementation automatically:
 
 1. Sets the language to Japanese (`ja`)
 2. Uses the Misaki tokenizer for proper Japanese text processing
-3. Applies the appropriate emotion styles based on emotion tags
+3. Adjusts speech parameters based on emotion tags:
+   - Modifies speech speed based on emotion (faster for happy/excited, slower for sad)
+   - Uses the base voice for all emotions (future versions may support voice blending)
 
 To use a Japanese voice, set the following in your configuration:
 
@@ -153,6 +155,24 @@ TTS_CONFIG:
 ```
 
 The Misaki tokenizer is automatically installed as part of the setup process and is used to properly process Japanese text before sending it to the Kokoro-82M model.
+
+## Emotion Handling in Kokoro TTS
+
+The Kokoro-82M TTS model doesn't directly support emotion tags or a `style` parameter. Instead, our implementation handles emotions by:
+
+1. **Extracting emotion tags** from the text (e.g., `[joy:0.8]`, `[sadness:0.6]`)
+2. **Adjusting speech parameters** based on the emotion and intensity:
+   - **Speed**: Adjusts the speech rate based on emotion (faster for happy/excited, slower for sad)
+   - **Voice**: Currently uses the base voice for all emotions
+
+The emotion intensity affects how strongly the speech parameters are modified:
+- Intensities below 0.3 use the default speech parameters
+- Intensities between 0.3 and 1.0 gradually increase the effect on speech parameters
+
+Future enhancements may include:
+- Voice blending for different emotions
+- Pitch adjustments based on emotion
+- Custom voice files optimized for specific emotions
 
 ## Integration with the Main Application
 
