@@ -95,6 +95,7 @@ class WebSocketHandler:
             "switch-config": self._handle_config_switch,
             "fetch-backgrounds": self._handle_fetch_backgrounds,
             "audio-play-start": self._handle_audio_play_start,
+            "mcp-tool-invoke": self._handle_mcp_tool_invoke,
         }
 
     async def handle_new_connection(
@@ -190,6 +191,7 @@ class WebSocketHandler:
             vad_engine=self.default_context_cache.vad_engine,
             agent_engine=self.default_context_cache.agent_engine,
             translate_engine=self.default_context_cache.translate_engine,
+            mcp_client=self.default_context_cache.mcp_client,
         )
         return session_service_context
 
@@ -564,3 +566,103 @@ class WebSocketHandler:
     ) -> None:
         """Handle group info request"""
         await self.send_group_update(websocket, client_uid)
+
+    async def _handle_mcp_tool_invoke(
+        self, websocket: WebSocket, client_uid: str, data: WSMessage
+    ) -> None:
+        """
+        Handle MCP tool invocation request
+
+        Args:
+            websocket: The WebSocket connection
+            client_uid: Client identifier
+            data: Message data containing tool name and parameters
+        """
+        context = self.client_contexts[client_uid]
+
+        # Check if MCP is enabled and initialized
+        if not context.mcp_client:
+            await websocket.send_text(
+                json.dumps({
+                    "type": "mcp-tool-result",
+                    "success": False,
+                    "error": "MCP is not enabled or initialized",
+                })
+            )
+            return
+
+        tool_name = data.get("tool_name")
+        parameters = data.get("parameters", {})
+
+        if not tool_name:
+            await websocket.send_text(
+                json.dumps({
+                    "type": "mcp-tool-result",
+                    "success": False,
+                    "error": "No tool name provided",
+                })
+            )
+            return
+
+        try:
+            # Check if user consent is required
+            if context.mcp_client.config.user_consent_required:
+                # Send consent request to client
+                await websocket.send_text(
+                    json.dumps({
+                        "type": "mcp-consent-request",
+                        "tool_name": tool_name,
+                        "parameters": parameters,
+                        "request_id": data.get("request_id", ""),
+                    })
+                )
+                # The client will send back a consent response, which will trigger this handler again
+                # with an additional "consent" field
+                if not data.get("consent"):
+                    return
+
+            # Invoke the tool
+            result = await context.mcp_client.invoke_tool(tool_name, parameters)
+
+            # Send the result back to the client
+            await websocket.send_text(
+                json.dumps({
+                    "type": "mcp-tool-result",
+                    "success": True,
+                    "tool_name": tool_name,
+                    "result": result,
+                    "request_id": data.get("request_id", ""),
+                })
+            )
+
+        except KeyError as e:
+            # Tool not found
+            await websocket.send_text(
+                json.dumps({
+                    "type": "mcp-tool-result",
+                    "success": False,
+                    "error": f"Tool not found: {str(e)}",
+                    "request_id": data.get("request_id", ""),
+                })
+            )
+        except ConnectionError as e:
+            # Server connection error
+            await websocket.send_text(
+                json.dumps({
+                    "type": "mcp-tool-result",
+                    "success": False,
+                    "error": f"Server connection error: {str(e)}",
+                    "request_id": data.get("request_id", ""),
+                })
+            )
+        except Exception as e:
+            # Other errors
+            logger.error(f"Error invoking MCP tool {tool_name}: {e}")
+            await websocket.send_text(
+                json.dumps({
+                    "type": "mcp-tool-result",
+                    "success": False,
+                    "error": f"Error invoking tool: {str(e)}",
+                    "request_id": data.get("request_id", ""),
+                })
+            )

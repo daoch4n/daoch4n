@@ -1,6 +1,8 @@
 import os
 import shutil
 import logging
+import asyncio
+from contextlib import asynccontextmanager
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -33,7 +35,21 @@ class AvatarStaticFiles(StaticFiles):
 
 class WebSocketServer:
     def __init__(self, config: Config):
-        self.app = FastAPI()
+        self.default_context_cache = ServiceContext()
+        self.default_context_cache.load_from_config(config)
+
+        # Create lifespan context manager for MCP initialization
+        @asynccontextmanager
+        async def lifespan(app: FastAPI):
+            # Initialize MCP client on startup
+            await self.initialize_mcp()
+            yield
+            # Clean up on shutdown
+            if self.default_context_cache.mcp_client:
+                await self.default_context_cache.mcp_client.shutdown()
+
+        # Create FastAPI app with lifespan
+        self.app = FastAPI(lifespan=lifespan)
 
         # Add CORS
         self.app.add_middleware(
@@ -44,17 +60,19 @@ class WebSocketServer:
             allow_headers=["*"],
         )
 
-        # Load configurations and initialize the default context cache
-        default_context_cache = ServiceContext()
-        default_context_cache.load_from_config(config)
-
         # Include routes
         self.app.include_router(
-            init_client_ws_route(default_context_cache=default_context_cache),
+            init_client_ws_route(default_context_cache=self.default_context_cache),
         )
         self.app.include_router(
-            init_webtool_routes(default_context_cache=default_context_cache),
+            init_webtool_routes(default_context_cache=self.default_context_cache),
         )
+
+    async def initialize_mcp(self):
+        """Initialize the MCP client if configured."""
+        if self.default_context_cache and self.default_context_cache.system_config and self.default_context_cache.system_config.mcp_config:
+            logger.info("Initializing MCP client on server startup")
+            await self.default_context_cache.init_mcp()
 
         # Mount cache directory first (to ensure audio file access)
         if not os.path.exists("cache"):

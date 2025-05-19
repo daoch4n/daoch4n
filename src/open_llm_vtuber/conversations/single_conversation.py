@@ -103,6 +103,25 @@ async def process_single_conversation(
             )
             logger.info(f"AI response: {full_response}")
 
+            # Update chat history resource in MCP client if available
+            if context.mcp_client:
+                try:
+                    from ..mcp.default_resources import create_chat_history_resource
+                    from ..chat_history_manager import get_history
+
+                    # Get updated history
+                    history = get_history(
+                        context.character_config.conf_uid,
+                        context.history_uid,
+                    )
+
+                    # Create and register updated chat history resource
+                    chat_history_resource = create_chat_history_resource(history)
+                    context.mcp_client.register_resource(chat_history_resource)
+                    logger.debug("Updated chat history resource in MCP client")
+                except Exception as e:
+                    logger.error(f"Error updating chat history resource: {e}")
+
         return full_response
 
     except asyncio.CancelledError:
