@@ -94,7 +94,7 @@ character_config:
 
       gemini_live_agent:
         api_key: 'AIzaSyAJA2znNF2Xp-6vztj2bSmP-oskQSVTOvY' # Replace with your Gemini API key
-        model_name: 'gemini-2.0-flash-live-preview-04-09' # The Gemini Live preview model to use (no compatibility mode)
+        model_name: 'gemini-2.0-flash-live-001' # The Gemini 2.0 Live model to use with the new SDK
         language_code: 'ja-JP' # Language code for speech (e.g., en-US, ja-JP)
         voice_name: 'Kore' # Gemini voice name (e.g., Puck, Charon, Kore)
         system_instruction: "You are a cheerful and helpful VTuber assistant named
