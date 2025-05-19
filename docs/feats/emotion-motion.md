@@ -6,6 +6,8 @@ This document describes the implementation of automatic body motions based on em
 
 The Live2D model animation system has been enhanced to automatically change both facial expressions and body poses based on emotion tags in the AI's responses. This creates a more dynamic and expressive character that reacts naturally to the emotional content of the conversation.
 
+The system is intensity-aware, meaning that body motions are only triggered when the emotion intensity is greater than 0.5. This allows for more nuanced reactions where mild emotions (intensity ≤ 0.5) only change facial expressions, while stronger emotions (intensity > 0.5) also trigger body motions.
+
 ## Implementation Details
 
 ### 1. Emotion-Motion Mapping
@@ -27,7 +29,7 @@ DEFAULT_EMOTION_MOTION_MAP = {
 
 ### 2. Backend Processing
 
-The `actions_extractor` transformer in `src/open_llm_vtuber/agent/transformers.py` extracts emotions from the text and maps them to appropriate motions:
+The `actions_extractor` transformer in `src/open_llm_vtuber/agent/transformers.py` extracts emotions from the text and maps them to appropriate motions, but only when the emotion intensity is greater than 0.5:
 
 ```python
 # Map emotions to motions (using the same emotion tags)
@@ -40,11 +42,26 @@ matches = re.finditer(emotion_pattern, text)
 
 for match in matches:
     emotion = match.group(1)
-    if emotion in live2d_model.emo_map:
+    intensity_str = match.group(2)
+
+    # Parse intensity value, default to 1.0 if not specified
+    intensity = 1.0
+    if intensity_str:
+        try:
+            intensity = float(intensity_str)
+            # Clamp intensity to valid range [0.0, 1.0]
+            intensity = max(0.0, min(1.0, intensity))
+        except ValueError:
+            # If conversion fails, use default intensity
+            intensity = 1.0
+
+    # Only add motion if intensity is greater than 0.5
+    if intensity > 0.5 and emotion in live2d_model.emo_map:
         # Get corresponding motion for this emotion
         motion = emotion_mapper.get_motion_for_emotion(emotion)
         if motion and motion not in motions:  # Avoid duplicates
             motions.append(motion)
+            logger.debug(f"Adding motion {motion} for emotion {emotion} with intensity {intensity}")
 
 # Set motions if any were found
 if motions:
@@ -93,15 +110,17 @@ Each motion group contains multiple animation files (e.g., `idle_00.mtn`, `idle_
 To trigger emotions and motions in the AI's responses, include emotion tags in the text:
 
 ```
-I'm so happy to see you! [joy]
-That's really scary! [fear]
-I'm not sure about that... [neutral]
+I'm so happy to see you! [joy:0.8]       # Strong joy - changes expression and triggers motion
+I'm a bit happy today. [joy:0.3]         # Mild joy - only changes expression, no motion
+That's really scary! [fear:0.9]          # Strong fear - changes expression and triggers motion
+That's somewhat concerning. [fear:0.4]   # Mild fear - only changes expression, no motion
+I'm not sure about that... [neutral]     # Default intensity (1.0) - changes expression and triggers motion
 ```
 
 The system will automatically:
-1. Extract the emotion tags
-2. Set the appropriate facial expression
-3. Play the corresponding body motion
+1. Extract the emotion tags and their intensity values
+2. Set the appropriate facial expression (for all emotions regardless of intensity)
+3. Play the corresponding body motion (only for emotions with intensity > 0.5)
 
 ## Customization
 
