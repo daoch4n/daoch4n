@@ -27,6 +27,10 @@ try:
 except ImportError:
     logger.warning("Misaki tokenizer not found. Japanese text processing may be limited.")
     MISAKI_AVAILABLE = False
+except Exception as e:
+    logger.warning(f"Error importing Misaki tokenizer: {e}")
+    logger.warning("Japanese text processing may be limited.")
+    MISAKI_AVAILABLE = False
 
 from .tts_interface import TTSInterface
 
