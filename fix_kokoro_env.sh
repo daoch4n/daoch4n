@@ -64,6 +64,14 @@ else
     log "pyopenjtalk is already installed, skipping."
 fi
 
+# Install fugashi for Japanese text processing
+if ! is_package_installed "fugashi"; then
+    log "Installing fugashi for Japanese text processing..."
+    python -m pip install fugashi
+else
+    log "fugashi is already installed, skipping."
+fi
+
 # Install the project in development mode if not already installed
 if ! is_package_installed "open_llm_vtuber"; then
     log "Installing project in development mode..."
