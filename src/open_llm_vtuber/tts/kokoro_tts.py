@@ -29,6 +29,16 @@ except ImportError:
     logger.warning("KokoroWrapper not found. Using default KPipeline.")
     WRAPPER_AVAILABLE = False
 
+# Import our custom JAG2P class
+try:
+    from .custom_jag2p import patch_jag2p
+    # Patch the JAG2P class
+    patch_jag2p()
+except ImportError:
+    logger.warning("custom_jag2p not found. Using default JAG2P.")
+except Exception as e:
+    logger.warning(f"Failed to patch JAG2P class: {e}")
+
 # Import Misaki tokenizer for Japanese language support
 try:
     from misaki import Misaki
