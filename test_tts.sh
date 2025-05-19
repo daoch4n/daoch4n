@@ -146,6 +146,12 @@ setup_kokoro() {
             python -m spacy download en_core_web_sm
         fi
 
+        # Install pyopenjtalk for Japanese voice support
+        if ! is_package_installed "pyopenjtalk"; then
+            log "Installing pyopenjtalk for Japanese voice support..."
+            uv pip install pyopenjtalk
+        fi
+
         # Install the project in development mode if needed
         if ! is_package_installed "open_llm_vtuber"; then
             log "Installing project in development mode..."
