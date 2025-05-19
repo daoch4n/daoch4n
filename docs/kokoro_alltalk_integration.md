@@ -71,7 +71,7 @@ The pitch adjustment in RVC is measured in semitones (half-steps in musical term
 - **-12 semitones**: Lowers the pitch by one octave (often used to convert a female voice to a male-sounding voice)
 - **0 semitones**: Keeps the pitch unchanged (suitable for same-gender conversions)
 
-For emotional speech, we use subtle pitch adjustments (between -2 and +4 semitones) to maintain Daoko's natural voice characteristics while still conveying emotional variations.
+Since the RVC model is already trained on Daoko's voice, we use 0 as the base pitch and only apply subtle adjustments (between -2 and +4 semitones) for emotional variations.
 
 #### Emotion Intensity
 

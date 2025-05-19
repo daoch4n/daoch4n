@@ -15,7 +15,7 @@ from pathlib import Path
 # Add the project root to the Python path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.open_llm_vtuber.tts.tts_factory import TTSFactory
+from open_llm_vtuber.tts.tts_factory import TTSFactory
 
 
 def load_config(config_path):
