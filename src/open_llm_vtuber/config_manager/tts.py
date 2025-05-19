@@ -1,6 +1,6 @@
 # config_manager/tts.py
 from pydantic import ValidationInfo, Field, model_validator
-from typing import Literal, Optional, Dict, ClassVar
+from typing import Any, Literal, Optional, Dict, ClassVar
 from .i18n import I18nMixin, Description
 
 
@@ -342,44 +342,17 @@ class AllTalkTTSConfig(I18nMixin):
     }
 
 
-class KokoroTTSConfig(I18nMixin):
-    """Configuration for Kokoro TTS."""
+# KokoroTTSConfig has been removed in favor of the tts_service microservice approach
 
-    voice: str = Field("af_heart", alias="voice")
-    language: str = Field("en", alias="language")
-    device: str = Field("cpu", alias="device")
-    repo_id: Optional[str] = Field(None, alias="repo_id")
-    cache_dir: str = Field("cache", alias="cache_dir")
-    sample_rate: int = Field(24000, alias="sample_rate")
-    output_format: str = Field("wav", alias="output_format")
-    emotion_mapping: Optional[Dict[str, str]] = Field(None, alias="emotion_mapping")
+
+class TTSServiceConfig(I18nMixin):
+    """Configuration for TTS Service microservice."""
+
+    base_url: str = Field("http://localhost:5000", alias="base_url")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
-        "voice": Description(
-            en="Voice name to use for Kokoro TTS", zh="Kokoro TTS 使用的语音名称"
-        ),
-        "language": Description(
-            en="Language code (e.g., en, zh)", zh="语言代码（如 en、zh）"
-        ),
-        "device": Description(
-            en="Device to use (cuda, cpu)", zh="使用的设备（cuda、cpu）"
-        ),
-        "repo_id": Description(
-            en="Repository ID for custom Kokoro model (optional)",
-            zh="自定义 Kokoro 模型的仓库 ID（可选）"
-        ),
-        "cache_dir": Description(
-            en="Directory to store generated audio files", zh="存储生成的音频文件的目录"
-        ),
-        "sample_rate": Description(
-            en="Sample rate for the generated audio", zh="生成的音频的采样率"
-        ),
-        "output_format": Description(
-            en="Output audio format (wav, mp3, etc.)", zh="输出音频格式（wav、mp3 等）"
-        ),
-        "emotion_mapping": Description(
-            en="Mapping from emotion tags to Kokoro voice styles",
-            zh="从情感标签到 Kokoro 语音风格的映射"
+        "base_url": Description(
+            en="Base URL of the TTS Service microservice", zh="TTS 服务微服务的基础 URL"
         ),
     }
 
@@ -401,6 +374,7 @@ class TTSConfig(I18nMixin):
         "sherpa_onnx_tts",
         "alltalk_tts",
         "kokoro_tts",
+        "tts_service",
     ] = Field(..., alias="tts_model")
 
     azure_tts: Optional[AzureTTSConfig] = Field(None, alias="azure_tts")
@@ -417,7 +391,9 @@ class TTSConfig(I18nMixin):
         None, alias="sherpa_onnx_tts"
     )
     alltalk_tts: Optional[AllTalkTTSConfig] = Field(None, alias="alltalk_tts")
-    kokoro_tts: Optional[KokoroTTSConfig] = Field(None, alias="kokoro_tts")
+    # kokoro_tts has been removed in favor of the tts_service microservice approach
+    kokoro_tts: Optional[Dict[str, Any]] = Field(None, alias="kokoro_tts")
+    tts_service: Optional[TTSServiceConfig] = Field(None, alias="tts_service")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "tts_model": Description(
@@ -450,6 +426,9 @@ class TTSConfig(I18nMixin):
         "kokoro_tts": Description(
             en="Configuration for Kokoro TTS", zh="Kokoro TTS 配置"
         ),
+        "tts_service": Description(
+            en="Configuration for TTS Service microservice", zh="TTS 服务微服务配置"
+        ),
     }
 
     @model_validator(mode="after")
@@ -481,7 +460,8 @@ class TTSConfig(I18nMixin):
             values.sherpa_onnx_tts.model_validate(values.sherpa_onnx_tts.model_dump())
         elif tts_model == "alltalk_tts" and values.alltalk_tts is not None:
             values.alltalk_tts.model_validate(values.alltalk_tts.model_dump())
-        elif tts_model == "kokoro_tts" and values.kokoro_tts is not None:
-            values.kokoro_tts.model_validate(values.kokoro_tts.model_dump())
+        elif tts_model == "tts_service" and values.tts_service is not None:
+            values.tts_service.model_validate(values.tts_service.model_dump())
+        # kokoro_tts is now a Dict, no need to validate
 
         return values
