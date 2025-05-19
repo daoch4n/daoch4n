@@ -153,6 +153,12 @@ setup_kokoro() {
             uv pip install pyopenjtalk
         fi
 
+        # Install fugashi for Japanese text processing
+        if ! is_package_installed "fugashi"; then
+            log "Installing fugashi for Japanese text processing..."
+            uv pip install fugashi
+        fi
+
         # Install the project in development mode if needed
         if ! is_package_installed "open_llm_vtuber"; then
             log "Installing project in development mode..."
