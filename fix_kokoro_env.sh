@@ -1,27 +1,70 @@
 #!/bin/bash
 
 # This script fixes the Kokoro virtual environment by ensuring all required packages are installed
+VERBOSE=${VERBOSE:-false}
 
-echo "Fixing Kokoro virtual environment..."
+# Function to log messages
+log() {
+    if [ "$VERBOSE" = true ]; then
+        echo "$1"
+    else
+        # Only show important messages in non-verbose mode
+        if [[ "$1" != "Package"* ]]; then
+            echo "$1"
+        fi
+    fi
+}
+
+log "Fixing Kokoro virtual environment..."
 
 # Activate the virtual environment
 source .venv/kokoro-env/bin/activate
 
+# Function to check if a Python package is installed
+is_package_installed() {
+    python -c "import $1" &> /dev/null
+    return $?
+}
+
 # Ensure pip is installed
+log "Checking pip installation..."
 python -m ensurepip --upgrade
 
+# Install required packages if not already installed
+install_if_needed() {
+    package=$1
+    import_name=${2:-$1}
+
+    if ! is_package_installed "$import_name"; then
+        log "Installing package: $package"
+        python -m pip install $package
+    else
+        log "Package $import_name is already installed, skipping."
+    fi
+}
+
 # Install required packages
-python -m pip install sounddevice
-python -m pip install soundfile
-python -m pip install pyyaml
+install_if_needed sounddevice
+install_if_needed soundfile
+install_if_needed pyyaml yaml
 
-# Install Misaki tokenizer for Japanese language support
-python -m pip install git+https://github.com/hexgrad/misaki.git
+# Install Misaki tokenizer for Japanese language support if not already installed
+if ! is_package_installed "misaki"; then
+    log "Installing Misaki tokenizer..."
+    python -m pip install git+https://github.com/hexgrad/misaki.git
+else
+    log "Misaki tokenizer is already installed, skipping."
+fi
 
-# Install the project in development mode
-python -m pip install -e .
+# Install the project in development mode if not already installed
+if ! is_package_installed "open_llm_vtuber"; then
+    log "Installing project in development mode..."
+    python -m pip install -e .
+else
+    log "Project is already installed in development mode, skipping."
+fi
 
-echo "Virtual environment fixed successfully!"
+log "Virtual environment fixed successfully!"
 
 # Deactivate the virtual environment
 deactivate
