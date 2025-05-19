@@ -88,7 +88,8 @@ The Kokoro TTS integration requires the following dependencies:
    - `kokoro` - The main Kokoro TTS package
    - `misaki` - Japanese tokenizer for Kokoro
    - `pyopenjtalk` - Japanese text processing
-   - `fugashi` - Japanese morphological analyzer
+   - `fugashi[unidic-lite]` - Japanese morphological analyzer with dictionary
+   - `unidic-lite` - Japanese dictionary for MeCab
    - `jaconv` - Japanese text conversion
    - `mojimoji` - Japanese character conversion
    - `spacy` - Text processing
@@ -158,7 +159,7 @@ If you encounter errors related to missing dependencies, run the `fix_kokoro_env
 
 ### MeCab Issues
 
-If you encounter issues with MeCab, make sure it's properly installed and the dictionary is available:
+If you encounter issues with MeCab, the scripts will attempt to fix the configuration automatically. However, if you still have issues, you can try the following:
 
 ```bash
 # Check MeCab installation
@@ -166,7 +167,16 @@ mecab -v
 
 # Check MeCab dictionary
 mecab -D
+
+# Create MeCab configuration file manually
+sudo mkdir -p /usr/local/etc
+echo "dicdir = /var/lib/mecab/dic/ipadic-utf8" | sudo tee /usr/local/etc/mecabrc
+
+# Test MeCab
+echo "テスト" | mecab
 ```
+
+If you see an error like `param.cpp(69) [ifs] no such file or directory: /usr/local/etc/mecabrc`, it means the MeCab configuration file is missing. The scripts should create this file automatically, but you can also create it manually as shown above.
 
 ### Testing
 
