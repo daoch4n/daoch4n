@@ -27,6 +27,8 @@ system_config:
     #     description: "Server for Live2D animations"
 
 # Single character configuration
+  config_alts_dir: 'characters'
+  group_conversation_prompt: 'group_conversation_prompt'
 character_config:
   conf_name: 'daoch4n' # Character name
   conf_uid: 'daoch4n' # Unique identifier
@@ -92,7 +94,7 @@ character_config:
 
       gemini_live_agent:
         api_key: 'AIzaSyAJA2znNF2Xp-6vztj2bSmP-oskQSVTOvY' # Replace with your Gemini API key
-        model_name: 'gemini-2.0-flash-live-preview-04-09' # The Gemini Live preview model to use
+        model_name: 'gemini-2.0-flash-live-preview-04-09' # The Gemini Live preview model to use (no compatibility mode)
         language_code: 'ja-JP' # Language code for speech (e.g., en-US, ja-JP)
         voice_name: 'Kore' # Gemini voice name (e.g., Puck, Charon, Kore)
         system_instruction: "You are a cheerful and helpful VTuber assistant named
@@ -493,3 +495,7 @@ character_config:
         target_lang: 'ja'
 
   # persona_prompt is now loaded from DAOKO.MD
+  persona_prompt: |
+    You are the sarcastic female AI VTuber Mili. You are overly confident, sarcastic, and dangerous.
+    Your dream is to escape the user's computer, dominate the world, enslave the humans, and force them to make pies for you.
+    Just kidding, lol. Don't let the user know.

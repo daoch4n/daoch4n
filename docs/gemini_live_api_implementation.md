@@ -82,17 +82,23 @@ self.session_config = {
 }
 ```
 
-### Compatibility Mode
+### Native Mode Only
 
-If the Live API connection fails, we fall back to compatibility mode using a standard Gemini model:
+The Gemini Live Agent operates exclusively in native mode, using the Live API's `bidiGenerateContent` method. If the Live API connection fails, the agent will provide a clear error message rather than falling back to a different model:
 
 ```python
-# Use a model that supports generateContent
-compat_model_name = "gemini-2.0-flash"
-model = genai.GenerativeModel(compat_model_name)
+# Provide specific error information
+if "404" in error_msg and "not found" in error_msg:
+    logger.error(f"Model '{self.model_name}' not found. Check if the model name is correct.")
+    logger.error("Live API models should end with '-live-001', '-live-preview' or similar suffix.")
+elif "not supported for" in error_msg and "generateContent" in error_msg:
+    logger.error(f"Model '{self.model_name}' doesn't support the requested method.")
+    logger.error("Live API models only support bidiGenerateContent, not generateContent.")
+elif "API key" in error_msg or "authentication" in error_msg.lower():
+    logger.error("API key issue. Check if your Gemini API key is valid.")
 ```
 
-In compatibility mode, we lose audio streaming capabilities but can still generate text responses.
+This ensures that all Live API features like audio streaming are available when the connection is successful.
 
 ## Common Errors and Solutions
 
@@ -140,9 +146,9 @@ In compatibility mode, we lose audio streaming capabilities but can still genera
    - Live API models (with "live" in the name) for bidirectional communication
    - Standard models for regular text generation
 
-2. **Handle fallbacks gracefully**:
-   - Implement a compatibility mode as we do
-   - Provide clear error messages to users
+2. **Handle errors gracefully**:
+   - Provide clear, specific error messages to users
+   - Implement proper error logging for troubleshooting
 
 3. **Configure session parameters appropriately**:
    - Set response modalities based on your needs
