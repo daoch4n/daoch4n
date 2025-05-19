@@ -18,9 +18,9 @@ As of May 2025, the following model is supported for the Gemini Live API:
 
 This model supports the `bidiGenerateContent` method required for the Live API.
 
-### Compatibility Mode
+### Native Mode Only
 
-If the Live API connection fails, the agent will fall back to compatibility mode, which uses a standard Gemini model (`gemini-2.0-flash`) with the `generateContent` method. In compatibility mode, some features like audio streaming will not be available.
+The Gemini Live Agent operates exclusively in native mode, using the Live API's `bidiGenerateContent` method. This ensures all features like audio streaming are available. If the Live API connection fails, the agent will provide a clear error message.
 
 ## Configuration
 
@@ -47,11 +47,11 @@ The Gemini Live Agent implementation in `src/open_llm_vtuber/agent/agents/gemini
 2. Sending text and audio input to the model
 3. Receiving and processing audio and text responses
 4. Handling session resumption for longer conversations
-5. Falling back to compatibility mode if the Live API connection fails
+5. Providing clear error messages if connection issues occur
 
 ### Key Methods
 
-- `_ensure_session()`: Establishes a connection to the Gemini Live API or falls back to compatibility mode
+- `_ensure_session()`: Establishes a connection to the Gemini Live API
 - `chat()`: Handles text-based interactions with the model
 - `stream_audio_chunk()`: Streams audio data to the model for real-time processing
 - `end_audio_stream()`: Signals the end of an audio stream
