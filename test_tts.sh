@@ -165,6 +165,12 @@ setup_kokoro() {
             uv pip install jaconv
         fi
 
+        # Install mojimoji for Japanese character conversion
+        if ! is_package_installed "mojimoji"; then
+            log "Installing mojimoji for Japanese character conversion..."
+            uv pip install mojimoji
+        fi
+
         # Install the project in development mode if needed
         if ! is_package_installed "open_llm_vtuber"; then
             log "Installing project in development mode..."

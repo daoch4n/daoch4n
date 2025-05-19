@@ -80,6 +80,14 @@ else
     log "jaconv is already installed, skipping."
 fi
 
+# Install mojimoji for Japanese character conversion
+if ! is_package_installed "mojimoji"; then
+    log "Installing mojimoji for Japanese character conversion..."
+    python -m pip install mojimoji
+else
+    log "mojimoji is already installed, skipping."
+fi
+
 # Install the project in development mode if not already installed
 if ! is_package_installed "open_llm_vtuber"; then
     log "Installing project in development mode..."
