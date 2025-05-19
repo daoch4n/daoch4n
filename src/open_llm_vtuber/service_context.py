@@ -129,24 +129,30 @@ class ServiceContext:
         # init live2d from character config
         self.init_live2d(config.character_config.live2d_model_name)
 
-        # init asr from character config
-        self.init_asr(config.character_config.asr_config)
-
-        # init tts from character config
-        self.init_tts(config.character_config.tts_config)
-
-        # init vad from character config
-        self.init_vad(config.character_config.vad_config)
-
+        # First initialize the agent to check if it's a Gemini Live Agent
         # init agent from character config
-        self.init_agent(
+        is_gemini_live = self.init_agent(
             config.character_config.agent_config,
             config.character_config.persona_prompt,
         )
 
-        self.init_translate(
-            config.character_config.tts_preprocessor_config.translator_config
-        )
+        # Skip TTS, ASR, and VAD initialization if using Gemini Live Agent
+        if is_gemini_live:
+            logger.info("Using Gemini Live Agent - skipping TTS, ASR, and VAD initialization")
+        else:
+            # init asr from character config
+            self.init_asr(config.character_config.asr_config)
+
+            # init tts from character config
+            self.init_tts(config.character_config.tts_config)
+
+            # init vad from character config
+            self.init_vad(config.character_config.vad_config)
+
+            # Initialize translation only if not using Gemini Live Agent
+            self.init_translate(
+                config.character_config.tts_preprocessor_config.translator_config
+            )
 
         # store typed config references
         self.config = config
@@ -198,9 +204,16 @@ class ServiceContext:
         else:
             logger.info("VAD already initialized with the same config.")
 
-    def init_agent(self, agent_config: AgentConfig, persona_prompt: str) -> None:
-        """Initialize or update the LLM engine based on agent configuration."""
+    def init_agent(self, agent_config: AgentConfig, persona_prompt: str) -> bool:
+        """Initialize or update the LLM engine based on agent configuration.
+
+        Returns:
+            bool: True if the agent is a Gemini Live Agent, False otherwise
+        """
         logger.info(f"Initializing Agent: {agent_config.conversation_agent_choice}")
+
+        # Check if this is a Gemini Live Agent
+        is_gemini_live = agent_config.conversation_agent_choice == "gemini_live_agent"
 
         # Load persona prompt from DAOKO.MD if it exists, otherwise use the one from config
         try:
@@ -231,7 +244,7 @@ class ServiceContext:
             and persona_prompt == self.character_config.persona_prompt
         ):
             logger.debug("Agent already initialized with the same config.")
-            return
+            return is_gemini_live
 
         system_prompt = self.construct_system_prompt(persona_prompt)
 
@@ -246,7 +259,8 @@ class ServiceContext:
                 system_prompt=system_prompt,
                 live2d_model=self.live2d_model,
                 tts_preprocessor_config=self.character_config.tts_preprocessor_config,
-                character_avatar=avatar,  # Add avatar parameter
+                character_name=self.character_config.character_name,
+                character_avatar=avatar,
             )
 
             logger.debug(f"Agent choice: {agent_config.conversation_agent_choice}")
@@ -260,6 +274,8 @@ class ServiceContext:
         except Exception as e:
             logger.error(f"Failed to initialize agent: {e}")
             raise
+
+        return is_gemini_live
 
     def init_translate(self, translator_config: TranslatorConfig) -> None:
         """Initialize or update the translation engine based on the configuration."""
