@@ -56,6 +56,14 @@ else
     log "Misaki tokenizer is already installed, skipping."
 fi
 
+# Install pyopenjtalk for Japanese voice support
+if ! is_package_installed "pyopenjtalk"; then
+    log "Installing pyopenjtalk for Japanese voice support..."
+    python -m pip install pyopenjtalk
+else
+    log "pyopenjtalk is already installed, skipping."
+fi
+
 # Install the project in development mode if not already installed
 if ! is_package_installed "open_llm_vtuber"; then
     log "Installing project in development mode..."
