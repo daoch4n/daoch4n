@@ -1,4 +1,4 @@
-# Configuration for Kokoro-82M TTS integration with AllTalk TTS for Daoko Live2D model
+# Configuration for Kokoro-82M TTS integration with Daoko Live2D model
 
 # ============== General Settings ==============
 GENERAL:
@@ -13,16 +13,15 @@ GENERAL:
 
 # ============== TTS Settings ==============
 TTS_CONFIG:
-  TTS_ENGINE: "alltalk_tts"
-  TTS_VOICE: "en_US-ljspeech-high.onnx"  # Base voice from AllTalk
+  TTS_ENGINE: "kokoro_tts"
+  TTS_VOICE: "af_heart"  # Default voice from Kokoro
   TTS_LANGUAGE: "en"
-  TTS_API_URL: "http://127.0.0.1:7851"  # URL of the AllTalk TTS API server
-  TTS_RVC_ENABLED: true  # Enable RVC voice conversion
-  TTS_RVC_MODEL: "daoko[23]_16hs_3bs_SPLICED_NPROC_40k_v1"  # RVC model for Daoko
-  TTS_RVC_PITCH: 0  # Pitch adjustment for RVC voice conversion
+  TTS_DEVICE: "cuda"  # Use "cpu" if no GPU is available
+  TTS_REPO_ID: "hexgrad/Kokoro-82M"  # Repository ID for the Kokoro-82M model
   TTS_CACHE_DIR: "cache"
+  TTS_SAMPLE_RATE: 24000
   TTS_OUTPUT_FORMAT: "wav"
-  # Emotion mapping from our emotion tags to AllTalk styles
+  # Emotion mapping from our emotion tags to Kokoro styles
   TTS_EMOTION_MAPPING:
     joy: "happy"
     sadness: "sad"

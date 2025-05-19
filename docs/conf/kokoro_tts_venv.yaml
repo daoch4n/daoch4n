@@ -1,0 +1,50 @@
+# Configuration for Kokoro-82M TTS integration with Daoko Live2D model (Virtual Environment)
+
+# ============== General Settings ==============
+GENERAL:
+  CHARACTER_NAME: "Daoko"
+  LANGUAGE: "en"
+  VOICE_SPEED: 1.0
+  VOICE_VOLUME: 1.0
+  VOICE_PITCH: 0.0
+  VOICE_STABILITY: 0.5
+  VOICE_CLARITY: 0.5
+  VOICE_EMOTION_INTENSITY: 0.7
+
+# ============== TTS Settings ==============
+TTS_CONFIG:
+  TTS_ENGINE: "kokoro_tts"
+  TTS_VOICE: "af_heart"  # Default voice from Kokoro
+  TTS_LANGUAGE: "en"
+  TTS_DEVICE: "cpu"  # Use CPU to avoid CUDA version conflicts
+  # No need to specify TTS_REPO_ID - will use the default Kokoro-82M model
+  TTS_CACHE_DIR: "cache"
+  TTS_SAMPLE_RATE: 24000
+  TTS_OUTPUT_FORMAT: "wav"
+  # Emotion mapping from our emotion tags to Kokoro styles
+  TTS_EMOTION_MAPPING:
+    joy: "happy"
+    sadness: "sad"
+    anger: "angry"
+    fear: "fearful"
+    surprise: "surprised"
+    disgust: "disgusted"
+    neutral: "neutral"
+    smirk: "happy"
+
+# ============== Live2D Settings ==============
+LIVE2D_CONFIG:
+  LIVE2D_BACKEND: "pixi"
+  LIVE2D_MODEL_PATH: "live2d-models/shizuku/runtime/shizuku.model3.json"
+  LIVE2D_EXPRESSION_PATH: "live2d-models/shizuku/runtime/expressions"
+  LIVE2D_IDLE_MOTION_GROUP: "Idle"
+  LIVE2D_IDLE_MOTION_PRIORITY: 1
+  LIVE2D_EXPRESSION_MAP:
+    neutral: "neutral.exp3.json"
+    joy: "happy.exp3.json"
+    sadness: "sad.exp3.json"
+    anger: "angry.exp3.json"
+    surprise: "surprised.exp3.json"
+    fear: "fearful.exp3.json"
+    disgust: "disgusted.exp3.json"
+    smirk: "smirk.exp3.json"
