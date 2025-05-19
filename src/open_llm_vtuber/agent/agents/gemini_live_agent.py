@@ -141,7 +141,8 @@ class GeminiLiveAgent(AgentInterface):
             self.session_config = {}
             self.using_manual_vad = False
 
-        self.gemini_session: Optional[genai.GenerativeModel] = None
+        self.gemini_session = None
+        self.live_connect_ctx = None  # Store the context manager to keep it alive
         self.current_turn_audio_buffer = bytearray()
         self.is_interrupted = False
         self.active_audio_stream = False  # To track if we need to send audio_stream_end
@@ -186,11 +187,16 @@ class GeminiLiveAgent(AgentInterface):
                 logger.info(f"Connecting to Gemini Live API with model {self.model_name}")
                 logger.info(f"Using bidiGenerateContent method via WebSocket connection")
 
-                # Connect to the Gemini Live API directly
-                self.gemini_session = await self.client.aio.live.connect(
+                # Create a context manager for the live connection
+                # We need to store this context manager to keep it alive
+                self.live_connect_ctx = self.client.aio.live.connect(
                     model=self.model_name,
                     config=session_config_copy
                 )
+
+                # Enter the context manager to get the actual session
+                # We'll store both the context manager and the session
+                self.gemini_session = await self.live_connect_ctx.__aenter__()
 
                 logger.info("Connected to Gemini Live API successfully.")
                 self.is_interrupted = False  # Reset interruption flag on new session
@@ -239,10 +245,11 @@ class GeminiLiveAgent(AgentInterface):
             self.session_resumption_handle = None
 
         # Invalidate current session if it exists, so it reconnects with new history context
-        if self.gemini_session:
+        if self.gemini_session and self.live_connect_ctx:
             # Schedule closing, don't await here
-            asyncio.create_task(self.gemini_session.close())
+            asyncio.create_task(self.close_session())
             self.gemini_session = None
+            self.live_connect_ctx = None
 
     async def _send_history_to_gemini(self):
         """Send conversation history to Gemini if available."""
@@ -461,16 +468,12 @@ class GeminiLiveAgent(AgentInterface):
                         # If we have enough time left (more than 10 seconds), try to reconnect
                         if time_left_seconds > 10 and self.session_resumption_handle:
                             logger.info(f"Will attempt to reconnect with session handle before timeout ({time_left_seconds}s left)")
-                            if self.gemini_session:
-                                await self.gemini_session.close()
-                            self.gemini_session = None
+                            await self.close_session()
                             # Force reconnection on next interaction
                             await self._ensure_session()
                         else:
                             # Not enough time or no resumption handle, just close
-                            if self.gemini_session:
-                                await self.gemini_session.close()
-                            self.gemini_session = None
+                            await self.close_session()
                         break
             except Exception as e:
                 logger.error(f"Error during Gemini Live chat: {e}")
@@ -538,12 +541,10 @@ class GeminiLiveAgent(AgentInterface):
                 self.current_turn_audio_buffer.extend(audio_chunk)
                 self.active_audio_stream = True
                 # Potentially close session or mark as needing reconnection
-                if self.gemini_session:
-                    try:
-                        await self.gemini_session.close()
-                    except:
-                        pass
-                self.gemini_session = None
+                try:
+                    await self.close_session()
+                except:
+                    pass
         else:
             logger.warning("Gemini session not available or interrupted, cannot stream audio chunk.")
 
@@ -724,11 +725,13 @@ class GeminiLiveAgent(AgentInterface):
 
     async def close_session(self):
         """Close the Gemini Live session."""
-        if self.gemini_session:
+        if self.gemini_session and self.live_connect_ctx:
             logger.info("Closing Gemini Live session.")
             try:
-                await self.gemini_session.close()
+                # Properly exit the context manager
+                await self.live_connect_ctx.__aexit__(None, None, None)
             except Exception as e:
                 logger.warning(f"Error closing Gemini Live session: {e}")
             finally:
                 self.gemini_session = None
+                self.live_connect_ctx = None
