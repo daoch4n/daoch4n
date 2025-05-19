@@ -88,8 +88,8 @@ def test_alltalk_tts(config_path=None, text=None, output_path=None, play_audio=T
     kwargs = {
         "engine_type": tts_config.get("TTS_ENGINE", "alltalk_tts"),
         "api_url": tts_config.get("TTS_API_URL", "http://127.0.0.1:7851"),
-        "voice": tts_config.get("TTS_VOICE", "en_US-ljspeech-high.onnx"),
-        "language": tts_config.get("TTS_LANGUAGE", "en"),
+        "voice": tts_config.get("TTS_VOICE", "kokoro_jf_alpha"),
+        "language": tts_config.get("TTS_LANGUAGE", "ja"),
         "rvc_enabled": tts_config.get("TTS_RVC_ENABLED", False),
         "rvc_model": tts_config.get("TTS_RVC_MODEL", "Disabled"),
         "rvc_pitch": tts_config.get("TTS_RVC_PITCH", 0),
@@ -140,9 +140,13 @@ def test_alltalk_tts(config_path=None, text=None, output_path=None, play_audio=T
 def list_available_voices():
     """List all available voices in the AllTalk TTS server."""
     print("Available voices in AllTalk TTS server:")
-    print("- en_US-ljspeech-high.onnx (default)")
-    print("- en_US-ljspeech-medium.onnx")
-    print("- en_US-ljspeech-low.onnx")
+    print("- kokoro_jf_alpha (Kokoro Japanese female voice - recommended for Daoko)")
+    print("- kokoro_af_heart (Kokoro African female voice)")
+    print("- kokoro_en_us_001 to kokoro_en_us_008 (Kokoro English US voices)")
+    print("- kokoro_jf_gongitsune, kokoro_jf_nezumi, kokoro_jf_tebukuro (Other Kokoro Japanese female voices)")
+    print("- en_US-ljspeech-high.onnx (English US voice - high quality)")
+    print("- en_US-ljspeech-medium.onnx (English US voice - medium quality)")
+    print("- en_US-ljspeech-low.onnx (English US voice - low quality)")
     print("\nFor more voices, check the AllTalk TTS server API at /api/charactervoices")
 
 
@@ -152,7 +156,7 @@ if __name__ == "__main__":
     parser.add_argument("--text", help="Text to synthesize")
     parser.add_argument("--output", help="Path to save the generated audio file")
     parser.add_argument("--no-play", action="store_true", help="Don't attempt to play the audio")
-    parser.add_argument("--voice", help="Voice to use (e.g., en_US-ljspeech-high.onnx)")
+    parser.add_argument("--voice", help="Voice to use (e.g., kokoro_jf_alpha, en_US-ljspeech-high.onnx)")
     parser.add_argument("--rvc-enabled", action="store_true", help="Enable RVC voice conversion")
     parser.add_argument("--rvc-model", help="RVC model to use for voice conversion")
     parser.add_argument("--rvc-pitch", type=int, help="Pitch adjustment for RVC voice conversion")
