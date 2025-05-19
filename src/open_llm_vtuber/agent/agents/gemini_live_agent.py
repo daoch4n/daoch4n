@@ -5,7 +5,7 @@ from typing import AsyncIterator, Optional, List, Dict, Any, Literal, Union, Cal
 from loguru import logger
 import json
 
-from google import genai
+import google.genai as genai
 from google.genai import types as genai_types  # To avoid conflict with your types.py
 
 from .agent_interface import AgentInterface
@@ -193,10 +193,16 @@ class GeminiLiveAgent(AgentInterface):
                 # Models with 'live' in the name only support this method
                 logger.info(f"Connecting to Gemini Live API with model {self.model_name}")
                 logger.info(f"Using bidiGenerateContent method via WebSocket connection")
-                self.gemini_session = await self.client.aio.live.connect(
+
+                # Create a context manager for the live connection
+                live_connect = self.client.aio.live.connect(
                     model=self.model_name,
                     config=session_config_copy
                 )
+
+                # Enter the context manager to get the actual session
+                async with live_connect as session:
+                    self.gemini_session = session
 
                 logger.info("Connected to Gemini Live API successfully.")
                 self.is_interrupted = False  # Reset interruption flag on new session
