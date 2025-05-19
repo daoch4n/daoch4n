@@ -91,11 +91,26 @@ def actions_extractor(live2d_model: Live2dModel):
 
                         for match in matches:
                             emotion = match.group(1)
-                            if emotion in live2d_model.emo_map:
+                            intensity_str = match.group(2)
+
+                            # Parse intensity value, default to 1.0 if not specified
+                            intensity = 1.0
+                            if intensity_str:
+                                try:
+                                    intensity = float(intensity_str)
+                                    # Clamp intensity to valid range [0.0, 1.0]
+                                    intensity = max(0.0, min(1.0, intensity))
+                                except ValueError:
+                                    # If conversion fails, use default intensity
+                                    intensity = 1.0
+
+                            # Only add motion if intensity is greater than 0.5
+                            if intensity > 0.5 and emotion in live2d_model.emo_map:
                                 # Get corresponding motion for this emotion
                                 motion = emotion_mapper.get_motion_for_emotion(emotion)
                                 if motion and motion not in motions:  # Avoid duplicates
                                     motions.append(motion)
+                                    logger.debug(f"Adding motion {motion} for emotion {emotion} with intensity {intensity}")
 
                         # Set motions if any were found
                         if motions:
