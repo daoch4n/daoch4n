@@ -29,6 +29,11 @@ if ! python -c "import misaki" &> /dev/null; then
     echo "Misaki package not found in the main environment"
     echo "Installing with uv..."
     uv pip install git+https://github.com/hexgrad/misaki.git
+
+    # Install additional dependencies for Misaki
+    echo "Installing additional dependencies for Misaki..."
+    uv pip install spacy
+    python -m spacy download en_core_web_sm
 fi
 
 # Install the project in development mode if needed
