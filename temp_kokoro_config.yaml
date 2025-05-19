@@ -1,0 +1,41 @@
+GENERAL:
+  CHARACTER_NAME: Daoko
+  LANGUAGE: en
+  VOICE_CLARITY: 0.5
+  VOICE_EMOTION_INTENSITY: 0.7
+  VOICE_PITCH: 0.0
+  VOICE_SPEED: 1.0
+  VOICE_STABILITY: 0.5
+  VOICE_VOLUME: 1.0
+LIVE2D_CONFIG:
+  LIVE2D_BACKEND: pixi
+  LIVE2D_EXPRESSION_MAP:
+    anger: angry.exp3.json
+    disgust: disgusted.exp3.json
+    fear: fearful.exp3.json
+    joy: happy.exp3.json
+    neutral: neutral.exp3.json
+    sadness: sad.exp3.json
+    smirk: smirk.exp3.json
+    surprise: surprised.exp3.json
+  LIVE2D_EXPRESSION_PATH: live2d-models/shizuku/runtime/expressions
+  LIVE2D_IDLE_MOTION_GROUP: Idle
+  LIVE2D_IDLE_MOTION_PRIORITY: 1
+  LIVE2D_MODEL_PATH: live2d-models/shizuku/runtime/shizuku.model3.json
+TTS_CONFIG:
+  TTS_CACHE_DIR: cache
+  TTS_DEVICE: cpu
+  TTS_EMOTION_MAPPING:
+    anger: angry
+    disgust: disgusted
+    fear: fearful
+    joy: happy
+    neutral: neutral
+    sadness: sad
+    smirk: happy
+    surprise: surprised
+  TTS_ENGINE: kokoro_tts
+  TTS_LANGUAGE: en
+  TTS_OUTPUT_FORMAT: wav
+  TTS_SAMPLE_RATE: 24000
+  TTS_VOICE: jf_alpha
