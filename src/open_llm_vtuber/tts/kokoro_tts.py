@@ -20,6 +20,15 @@ from loguru import logger
 import torch
 from kokoro import KPipeline
 
+# Import our custom wrapper
+try:
+    from .kokoro_wrapper import KokoroWrapper
+    WRAPPER_AVAILABLE = True
+    logger.info("KokoroWrapper found. Using custom wrapper for Kokoro TTS.")
+except ImportError:
+    logger.warning("KokoroWrapper not found. Using default KPipeline.")
+    WRAPPER_AVAILABLE = False
+
 # Import Misaki tokenizer for Japanese language support
 try:
     from misaki import Misaki
@@ -101,26 +110,49 @@ class TTSEngine(TTSInterface):
 
         # Initialize the Kokoro pipeline
         try:
-            # Convert language code to Kokoro format (e.g., 'en' to 'a')
-            lang_code = self._convert_language_code(self.language)
-
-            # Only pass repo_id if explicitly provided
-            if self.repo_id:
-                self.pipeline = KPipeline(
-                    lang_code=lang_code,
-                    repo_id=self.repo_id,
-                    device=self.device
-                )
+            # Try to use our custom wrapper if available
+            if WRAPPER_AVAILABLE and self.is_japanese_voice():
+                logger.info(f"Using KokoroWrapper for Japanese voice: {self.voice}")
+                try:
+                    self.pipeline = KokoroWrapper(
+                        voice=self.voice,
+                        language=self.language,
+                        device=self.device,
+                        repo_id=self.repo_id,
+                        cache_dir=self.new_audio_dir
+                    )
+                    logger.info(f"KokoroWrapper initialized with voice: {self.voice}")
+                except Exception as e:
+                    logger.error(f"Failed to initialize KokoroWrapper: {e}")
+                    logger.warning("Falling back to standard KPipeline")
+                    # Fall back to standard KPipeline
+                    self._initialize_standard_pipeline()
             else:
-                # Use default model
-                self.pipeline = KPipeline(
-                    lang_code=lang_code,
-                    device=self.device
-                )
-            logger.info(f"Kokoro-82M TTS engine initialized with voice: {self.voice}")
+                # Use standard KPipeline
+                self._initialize_standard_pipeline()
         except Exception as e:
             logger.error(f"Failed to initialize Kokoro-82M TTS engine: {e}")
             raise
+
+    def _initialize_standard_pipeline(self):
+        """Initialize the standard KPipeline."""
+        # Convert language code to Kokoro format (e.g., 'en' to 'a')
+        lang_code = self._convert_language_code(self.language)
+
+        # Only pass repo_id if explicitly provided
+        if self.repo_id:
+            self.pipeline = KPipeline(
+                lang_code=lang_code,
+                repo_id=self.repo_id,
+                device=self.device
+            )
+        else:
+            # Use default model
+            self.pipeline = KPipeline(
+                lang_code=lang_code,
+                device=self.device
+            )
+        logger.info(f"Standard Kokoro-82M TTS engine initialized with voice: {self.voice}")
 
     def is_japanese_voice(self) -> bool:
         """
@@ -218,7 +250,21 @@ class TTSEngine(TTSInterface):
             logger.info(f"Using emotion: {emotion_style} (intensity: {intensity:.2f})")
             logger.info(f"Speech parameters: voice={voice}, speed={speed}")
 
-            # Generate audio using Kokoro with emotion-appropriate parameters
+            # Check if we're using the custom wrapper
+            if WRAPPER_AVAILABLE and isinstance(self.pipeline, KokoroWrapper):
+                # Generate audio using our custom wrapper
+                try:
+                    # KokoroWrapper.generate returns the path to the generated audio file
+                    wrapper_output = self.pipeline.generate(processed_text, file_name)
+                    logger.info(f"Generated audio file using KokoroWrapper: {wrapper_output}")
+                    return wrapper_output
+                except Exception as e:
+                    logger.error(f"Error generating audio with KokoroWrapper: {e}")
+                    logger.warning("Falling back to standard KPipeline")
+                    # Fall back to standard KPipeline
+                    self._initialize_standard_pipeline()
+
+            # Generate audio using standard Kokoro pipeline
             generator = self.pipeline(
                 processed_text,
                 voice=voice,
