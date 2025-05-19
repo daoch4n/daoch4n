@@ -72,6 +72,14 @@ else
     log "fugashi is already installed, skipping."
 fi
 
+# Install jaconv for Japanese text conversion
+if ! is_package_installed "jaconv"; then
+    log "Installing jaconv for Japanese text conversion..."
+    python -m pip install jaconv
+else
+    log "jaconv is already installed, skipping."
+fi
+
 # Install the project in development mode if not already installed
 if ! is_package_installed "open_llm_vtuber"; then
     log "Installing project in development mode..."
