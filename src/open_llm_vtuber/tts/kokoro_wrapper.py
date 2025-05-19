@@ -69,23 +69,15 @@ class KokoroWrapper:
         Initialize the Kokoro pipeline.
         """
         try:
-            # Monkey patch the JAG2P class to use our tagger
-            from misaki import ja
-
-            # Save the original JAG2P.__init__ method
-            original_init = ja.JAG2P.__init__
-
-            # Define a new __init__ method that uses our tagger
-            def new_init(self, *args, **kwargs):
-                original_init(self, *args, **kwargs)
-                from misaki.cutlet import Cutlet
-                self.cutlet = Cutlet(tagger=KokoroWrapper.tagger)
-
-            # Replace the JAG2P.__init__ method with our new method
-            ja.JAG2P.__init__ = new_init
-
-            # Set the tagger as a class variable
-            KokoroWrapper.tagger = self.tagger
+            # Import our custom JAG2P class
+            try:
+                from .custom_jag2p import patch_jag2p
+                # Patch the JAG2P class
+                patch_jag2p()
+            except ImportError:
+                logger.warning("custom_jag2p not found. Using default JAG2P.")
+            except Exception as e:
+                logger.warning(f"Failed to patch JAG2P class: {e}")
 
             # Convert language code to Kokoro format (e.g., 'ja' to 'j')
             lang_code = self._convert_language_code(self.language)
