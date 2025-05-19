@@ -44,89 +44,114 @@ class GeminiLiveAgent(AgentInterface):
             character_avatar: Optional[str] - Path to the character's avatar image
             live2d_model: Optional - Live2D model for expression extraction
         """
-        self.client = genai.Client(api_key=config.api_key)
+        # Configure the Gemini API with the API key
+        genai.configure(api_key=config.api_key)
         self.model_name = config.model_name
         self.character_name = character_name
         self.character_avatar = character_avatar
         self.live2d_model = live2d_model
 
-        # Configure the session for Gemini Live
-        self.session_config = {
-            "response_modalities": ["AUDIO"],  # Prioritize Gemini's direct audio output for low latency
-            "speech_config": genai_types.SpeechConfig(
-                language_code=config.language_code,
-                voice_config=genai_types.VoiceConfig(
-                    prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(voice_name=config.voice_name)
-                ) if config.voice_name else None
-            ),
-            "output_audio_transcription": {},  # Get transcription of what Gemini says
-            "input_audio_transcription": {} if config.enable_input_audio_transcription else None  # Get transcription of what user says
-        }
+        # Flag to track if we're in compatibility mode
+        self.compatibility_mode = False
 
-        # Add system instruction if provided
-        if config.system_instruction:
-            self.session_config["system_instruction"] = genai_types.Content(
-                parts=[genai_types.Part(text=config.system_instruction)]
-            )
+        # Store the system instruction for use in generate_content calls
+        self.system_instruction = config.system_instruction if config.system_instruction else ""
 
-        # Add tool configurations if enabled
-        tools = []
-
-        # Add function calling if enabled
-        if config.enable_function_calling and config.function_declarations:
-            tools.append({"function_declarations": config.function_declarations})
-
-        # Add code execution if enabled
-        if config.enable_code_execution:
-            tools.append({"code_execution": {}})
-
-        # Add Google Search if enabled
-        if config.enable_google_search:
-            tools.append({"google_search": {}})
-
-        # Add tools to session config if any are enabled
-        if tools:
-            self.session_config["tools"] = tools
-
-        # Add context window compression if enabled
-        if config.enable_context_compression:
-            self.session_config["context_window_compression"] = {
-                "sliding_window": {
-                    "window_size": config.compression_window_size
-                },
-                "token_threshold": config.compression_token_threshold
+        # Configure the session for Gemini Live (full mode)
+        try:
+            # Try to import the necessary types for full mode
+            self.session_config = {
+                "response_modalities": ["AUDIO"],  # Prioritize Gemini's direct audio output for low latency
             }
 
-        # VAD Configuration
-        if config.disable_automatic_vad:
-            # Use manual activity detection
-            self.session_config["realtime_input_config"] = {
-                "automatic_activity_detection": {
-                    "disabled": True
+            # Add speech config if the types are available
+            if hasattr(genai_types, 'SpeechConfig'):
+                self.session_config["speech_config"] = genai_types.SpeechConfig(
+                    language_code=config.language_code,
+                    voice_config=genai_types.VoiceConfig(
+                        prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(voice_name=config.voice_name)
+                    ) if config.voice_name else None
+                )
+
+            # Add transcription configs if available
+            self.session_config["output_audio_transcription"] = {}  # Get transcription of what Gemini says
+            if config.enable_input_audio_transcription:
+                self.session_config["input_audio_transcription"] = {}
+
+            # Add system instruction if provided
+            if config.system_instruction and hasattr(genai_types, 'Content'):
+                self.session_config["system_instruction"] = genai_types.Content(
+                    parts=[genai_types.Part(text=config.system_instruction)]
+                )
+
+            # Add tool configurations if enabled
+            tools = []
+
+            # Add function calling if enabled
+            if config.enable_function_calling and config.function_declarations:
+                tools.append({"function_declarations": config.function_declarations})
+
+            # Add code execution if enabled
+            if config.enable_code_execution:
+                tools.append({"code_execution": {}})
+
+            # Add Google Search if enabled
+            if config.enable_google_search:
+                tools.append({"google_search": {}})
+
+            # Add tools to session config if any are enabled
+            if tools:
+                self.session_config["tools"] = tools
+
+            # Add context window compression if enabled
+            if config.enable_context_compression:
+                self.session_config["context_window_compression"] = {
+                    "sliding_window": {
+                        "window_size": config.compression_window_size
+                    },
+                    "token_threshold": config.compression_token_threshold
                 }
-            }
-            self.using_manual_vad = True
-        else:
-            # Use automatic VAD with configuration
-            auto_vad_config = {"disabled": False}  # Explicitly set disabled to False
-            if config.start_of_speech_sensitivity:
-                # Use string values directly without trying to access enum attributes
-                auto_vad_config["start_of_speech_sensitivity"] = config.start_of_speech_sensitivity
-            if config.end_of_speech_sensitivity:
-                # Use string values directly without trying to access enum attributes
-                auto_vad_config["end_of_speech_sensitivity"] = config.end_of_speech_sensitivity
-            if config.prefix_padding_ms is not None:
-                auto_vad_config["prefix_padding_ms"] = config.prefix_padding_ms
-            if config.silence_duration_ms is not None:
-                auto_vad_config["silence_duration_ms"] = config.silence_duration_ms
 
-            if auto_vad_config:
+            # VAD Configuration
+            if config.disable_automatic_vad:
+                # Use manual activity detection
                 self.session_config["realtime_input_config"] = {
-                    "automatic_activity_detection": auto_vad_config
+                    "automatic_activity_detection": {
+                        "disabled": True
+                    }
                 }
+                self.using_manual_vad = True
+            else:
+                # Use automatic VAD with configuration
+                auto_vad_config = {"disabled": False}  # Explicitly set disabled to False
+                if config.start_of_speech_sensitivity:
+                    # Use string values directly without trying to access enum attributes
+                    auto_vad_config["start_of_speech_sensitivity"] = config.start_of_speech_sensitivity
+                if config.end_of_speech_sensitivity:
+                    # Use string values directly without trying to access enum attributes
+                    auto_vad_config["end_of_speech_sensitivity"] = config.end_of_speech_sensitivity
+                if config.prefix_padding_ms is not None:
+                    auto_vad_config["prefix_padding_ms"] = config.prefix_padding_ms
+                if config.silence_duration_ms is not None:
+                    auto_vad_config["silence_duration_ms"] = config.silence_duration_ms
+
+                if auto_vad_config:
+                    self.session_config["realtime_input_config"] = {
+                        "automatic_activity_detection": auto_vad_config
+                    }
+                self.using_manual_vad = False
+
+        except Exception as e:
+            # If we encounter any errors setting up the full mode configuration,
+            # log a warning and prepare for compatibility mode
+            logger.warning(f"Error setting up full Gemini Live configuration: {e}")
+            logger.warning("Will attempt to use compatibility mode as fallback")
+
+            # Set up a minimal configuration for compatibility mode
+            self.session_config = {}
             self.using_manual_vad = False
 
-        self.gemini_session: Optional[genai.LiveSession] = None
+        self.gemini_session: Optional[genai.GenerativeModel] = None
         self.current_turn_audio_buffer = bytearray()
         self.is_interrupted = False
         self.active_audio_stream = False  # To track if we need to send audio_stream_end
@@ -150,24 +175,61 @@ class GeminiLiveAgent(AgentInterface):
 
     async def _ensure_session(self):
         """Ensure that a Gemini Live session is active and connected."""
-        if self.gemini_session is None or self.gemini_session._conn is None or self.gemini_session._conn.closed:  # type: ignore
+        if self.gemini_session is None or getattr(self.gemini_session, '_conn', None) is None or getattr(getattr(self.gemini_session, '_conn', None), 'closed', True):
             logger.info("Gemini Live session not active or closed. Connecting...")
             session_config_copy = self.session_config.copy()
 
-            if self.session_resumption_handle:
-                logger.info(f"Attempting to resume Gemini session with handle: {self.session_resumption_handle}")
-                session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig(
-                    handle=self.session_resumption_handle
-                )
-            else:  # If no handle, ensure session_resumption is configured to get one
-                session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig()
+            # First try to connect using the full Gemini Live API
+            if not self.compatibility_mode:
+                try:
+                    # Check if the Client class exists
+                    if hasattr(genai, 'Client'):
+                        # Try to create a client
+                        client = genai.Client(api_key=genai.get_default_api_key())
 
-            self.gemini_session = await self.client.aio.live.connect(
-                model=self.model_name,
-                config=session_config_copy
-            )
-            logger.info("Connected to Gemini Live.")
-            self.is_interrupted = False  # Reset interruption flag on new session
+                        # Set up session resumption if needed
+                        if self.session_resumption_handle and hasattr(genai_types, 'SessionResumptionConfig'):
+                            logger.info(f"Attempting to resume Gemini session with handle: {self.session_resumption_handle}")
+                            session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig(
+                                handle=self.session_resumption_handle
+                            )
+                        elif hasattr(genai_types, 'SessionResumptionConfig'):
+                            # If no handle, ensure session_resumption is configured to get one
+                            session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig()
+
+                        # Connect to the Gemini Live API
+                        self.gemini_session = await client.aio.live.connect(
+                            model=self.model_name,
+                            config=session_config_copy
+                        )
+
+                        logger.info("Connected to Gemini Live API successfully.")
+                        self.is_interrupted = False  # Reset interruption flag on new session
+                        return  # Successfully connected, no need to try compatibility mode
+                except Exception as e:
+                    logger.warning(f"Failed to connect using full Gemini Live API: {e}")
+                    logger.warning("Falling back to compatibility mode")
+                    self.compatibility_mode = True  # Mark that we're in compatibility mode
+
+            # If we're in compatibility mode or the full mode connection failed, use the fallback approach
+            try:
+                # Create a model instance for compatibility mode
+                model = genai.GenerativeModel(self.model_name)
+
+                # Log that we're using compatibility mode
+                logger.warning("Using compatibility mode for Gemini")
+                logger.warning("Some Gemini Live features may not be available (no audio streaming)")
+
+                # Store the model in the session attribute
+                self.gemini_session = model
+
+                # Set interrupted flag to false
+                self.is_interrupted = False
+
+                logger.info("Connected to Gemini (compatibility mode).")
+            except Exception as e:
+                logger.error(f"Failed to connect to Gemini even in compatibility mode: {e}")
+                raise
 
     def set_memory_from_history(self, conf_uid: str, history_uid: str) -> None:
         """
@@ -204,6 +266,11 @@ class GeminiLiveAgent(AgentInterface):
 
     async def _send_history_to_gemini(self):
         """Send conversation history to Gemini if available."""
+        if self.compatibility_mode:
+            logger.debug("History not supported in compatibility mode")
+            return
+
+        # Only proceed if we have history and a session
         if self.history_conf_uid and self.history_history_uid and self.gemini_session:
             messages = get_history(self.history_conf_uid, self.history_history_uid)
             if messages:
@@ -216,7 +283,12 @@ class GeminiLiveAgent(AgentInterface):
                     # Skipping system messages as Gemini's system_instruction is set at session start
                 if turns:
                     logger.debug(f"Sending {len(turns)} history turns to Gemini.")
-                    await self.gemini_session.send_client_content(turns=turns, turn_complete=False)
+                    try:
+                        await self.gemini_session.send_client_content(turns=turns, turn_complete=False)
+                    except Exception as e:
+                        logger.warning(f"Failed to send history to Gemini: {e}")
+                        # If sending history fails, we might be in compatibility mode but didn't know it yet
+                        self.compatibility_mode = True
 
     async def chat(self, batch_input: BatchInput) -> AsyncIterator[AudioOutput]:
         """
@@ -241,202 +313,371 @@ class GeminiLiveAgent(AgentInterface):
 
         self.is_interrupted = False  # Reset per chat turn
 
-        # If it's a new session or history wasn't sent yet
-        if not self.session_resumption_handle or (self.history_conf_uid and self.history_history_uid):
-            await self._send_history_to_gemini()
-
-        # Handle text input first (if any)
-        # For Gemini Live, audio is the primary input method.
-        # Text input can be used to kick off the conversation or send explicit commands.
+        # Get text input from batch_input
         text_to_send = None
         if batch_input.texts:
-            # Concatenate all text parts. Gemini Live expects a single text input per turn.
+            # Concatenate all text parts
             full_text_input = " ".join([text.content for text in batch_input.texts if text.content])
             if full_text_input:
                 text_to_send = full_text_input
                 logger.debug(f"Sending text to Gemini: {text_to_send}")
-                await self.gemini_session.send_client_content(
-                    turns={"role": "user", "parts": [{"text": text_to_send}]},
-                    turn_complete=False  # Keep turn open for potential audio
-                )
+
+                # Store message in history if available
                 if self.history_conf_uid and self.history_history_uid:
                     store_message(
                         conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
                         role="human", content=text_to_send
                     )
 
-        # Mark the user's turn as complete if no audio is expected to follow immediately
-        if not self.active_audio_stream and text_to_send:  # if only text was sent
-            await self.gemini_session.send_client_content(turn_complete=True)
+        # If no text was provided, use a default message
+        if not text_to_send:
+            text_to_send = "Hello"
+            logger.debug("No text input provided, using default greeting")
 
-        # Receive and process responses from Gemini
-        accumulated_transcript = ""
-        try:
-            async for response in self.gemini_session.receive():
-                if self.is_interrupted:
-                    logger.info("Gemini Live: Interruption acknowledged, stopping response processing.")
-                    break
+        # Handle differently based on whether we're in compatibility mode or full mode
+        if self.compatibility_mode:
+            # In compatibility mode, use the generate_content method instead of the Live API
+            try:
+                # Generate a response using the model
+                response = await self.gemini_session.generate_content_async(text_to_send)
 
-                if response.session_resumption_update and response.session_resumption_update.new_handle:
-                    self.session_resumption_handle = response.session_resumption_update.new_handle
-                    logger.info(f"Received new Gemini session handle: {self.session_resumption_handle}")
-                    if self.history_conf_uid and self.history_history_uid:
-                        update_metadate(
-                            self.history_conf_uid, self.history_history_uid,
-                            {"resume_id": self.session_resumption_handle, "agent_type": self.AGENT_TYPE}
-                        )
+                # Get the response text
+                response_text = response.text
 
-                if response.server_content:
-                    # Handle input audio transcription if available
-                    if response.server_content.input_transcription and response.server_content.input_transcription.text:
-                        user_transcript = response.server_content.input_transcription.text
-                        logger.info(f"User audio transcription: {user_transcript}")
+                # Store the response in history if available
+                if self.history_conf_uid and self.history_history_uid:
+                    store_message(
+                        conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
+                        role="ai", content=response_text
+                    )
 
-                        # Store the transcription in history if available
-                        if self.history_conf_uid and self.history_history_uid and user_transcript:
-                            # Check if we already stored this transcript (avoid duplicates)
-                            history = get_history(self.history_conf_uid, self.history_history_uid)
-                            last_msg = history[-1] if history else None
+                # Create actions for expressions if Live2D model is available
+                actions = Actions()
+                if self.live2d_model and response_text:
+                    expression_tuples = self.live2d_model.extract_emotion(response_text)
+                    if expression_tuples:
+                        interpolated_expressions = [
+                            self.live2d_model.get_interpolated_expression(idx, intensity)
+                            for idx, intensity in expression_tuples
+                        ]
+                        actions.expressions = interpolated_expressions
 
-                            if not last_msg or last_msg.get("role") != "human" or last_msg.get("content") != user_transcript:
-                                store_message(
-                                    conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
-                                    role="human", content=user_transcript
+                # Yield the response as AudioOutput
+                # Note: In compatibility mode, we don't have actual audio, just text
+                yield AudioOutput(
+                    audio_path=None,  # No audio in compatibility mode
+                    display_text=DisplayText(
+                        text=response_text,
+                        name=self.character_name,
+                        avatar=self.character_avatar
+                    ),
+                    transcript=response_text,
+                    actions=actions
+                )
+
+            except Exception as e:
+                logger.error(f"Error generating response from Gemini in compatibility mode: {e}")
+                yield AudioOutput(
+                    audio_path=None,
+                    display_text=DisplayText(
+                        text=f"Error: {str(e)}",
+                        name=self.character_name,
+                        avatar=self.character_avatar
+                    ),
+                    transcript=f"Error: {str(e)}",
+                    actions=Actions()
+                )
+        else:
+            # In full mode, use the Live API
+            try:
+                # If it's a new session or history wasn't sent yet
+                if not self.session_resumption_handle or (self.history_conf_uid and self.history_history_uid):
+                    await self._send_history_to_gemini()
+
+                # Send the text input to Gemini
+                if text_to_send:
+                    await self.gemini_session.send_client_content(
+                        turns={"role": "user", "parts": [{"text": text_to_send}]},
+                        turn_complete=False  # Keep turn open for potential audio
+                    )
+
+                # Mark the user's turn as complete if no audio is expected to follow immediately
+                if not self.active_audio_stream and text_to_send:  # if only text was sent
+                    await self.gemini_session.send_client_content(turn_complete=True)
+
+                # Receive and process responses from Gemini
+                accumulated_transcript = ""
+                try:
+                    async for response in self.gemini_session.receive():
+                        if self.is_interrupted:
+                            logger.info("Gemini Live: Interruption acknowledged, stopping response processing.")
+                            break
+
+                        if response.session_resumption_update and response.session_resumption_update.new_handle:
+                            self.session_resumption_handle = response.session_resumption_update.new_handle
+                            logger.info(f"Received new Gemini session handle: {self.session_resumption_handle}")
+                            if self.history_conf_uid and self.history_history_uid:
+                                update_metadate(
+                                    self.history_conf_uid, self.history_history_uid,
+                                    {"resume_id": self.session_resumption_handle, "agent_type": self.AGENT_TYPE}
                                 )
 
-                    if response.server_content.interrupted:
-                        logger.info("Gemini indicated generation was interrupted.")
-                        self.is_interrupted = True  # Ensure we break
-                        break  # Stop processing this turn
+                        if response.server_content:
+                            # Handle input audio transcription if available
+                            if response.server_content.input_transcription and response.server_content.input_transcription.text:
+                                user_transcript = response.server_content.input_transcription.text
+                                logger.info(f"User audio transcription: {user_transcript}")
 
-                    # Handle tool calls if any
-                    if response.server_content.tool_calls:
-                        logger.info(f"Received tool calls: {response.server_content.tool_calls}")
-                        # Process tool calls in a separate task to avoid blocking the audio stream
-                        asyncio.create_task(self._process_tool_calls(response.server_content.tool_calls))
-                        # Yield a notification to the user that a tool is being used
+                                # Store the transcription in history if available
+                                if self.history_conf_uid and self.history_history_uid and user_transcript:
+                                    # Check if we already stored this transcript (avoid duplicates)
+                                    history = get_history(self.history_conf_uid, self.history_history_uid)
+                                    last_msg = history[-1] if history else None
+
+                                    if not last_msg or last_msg.get("role") != "human" or last_msg.get("content") != user_transcript:
+                                        store_message(
+                                            conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
+                                            role="human", content=user_transcript
+                                        )
+
+                            if response.server_content.interrupted:
+                                logger.info("Gemini indicated generation was interrupted.")
+                                self.is_interrupted = True  # Ensure we break
+                                break  # Stop processing this turn
+
+                            # Handle tool calls if any
+                            if response.server_content.tool_calls:
+                                logger.info(f"Received tool calls: {response.server_content.tool_calls}")
+                                # Process tool calls in a separate task to avoid blocking the audio stream
+                                asyncio.create_task(self._process_tool_calls(response.server_content.tool_calls))
+                                # Yield a notification to the user that a tool is being used
+                                yield AudioOutput(
+                                    audio_path=None,  # No audio for tool notification
+                                    display_text=DisplayText(
+                                        text="Using tools to help answer your question...",
+                                        name=self.character_name,
+                                        avatar=self.character_avatar
+                                    ),
+                                    transcript="Using tools to help answer your question...",
+                                    actions=Actions()
+                                )
+
+                            if response.server_content.model_turn and response.server_content.model_turn.parts:
+                                for part in response.server_content.model_turn.parts:
+                                    if part.inline_data and part.inline_data.mime_type.startswith("audio/"):
+                                        audio_data = part.inline_data.data
+                                        # Assuming output_audio_transcription is enabled
+                                        transcript_text = ""
+                                        if response.server_content.output_transcription:
+                                            transcript_text = response.server_content.output_transcription.text
+                                            accumulated_transcript += transcript_text  # Only append if new
+                                            logger.debug(f"Gemini audio transcript part: {transcript_text}")
+
+                                        # Extract expressions from transcript if Live2D model is available
+                                        actions = Actions()
+                                        if self.live2d_model and transcript_text:
+                                            expression_tuples = self.live2d_model.extract_emotion(transcript_text)
+                                            if expression_tuples:
+                                                interpolated_expressions = [
+                                                    self.live2d_model.get_interpolated_expression(idx, intensity)
+                                                    for idx, intensity in expression_tuples
+                                                ]
+                                                actions.expressions = interpolated_expressions
+
+                                        # Save audio to a temporary file
+                                        temp_audio_path = f"cache/gemini_live_{id(audio_data)}.wav"
+                                        with wave.open(temp_audio_path, "wb") as wf:
+                                            wf.setnchannels(1)  # Mono
+                                            wf.setsampwidth(2)  # 16-bit
+                                            wf.setframerate(24000)  # Gemini's output sample rate
+                                            wf.writeframes(audio_data)
+
+                                        logger.debug(f"Saved audio to {temp_audio_path} with transcript: '{transcript_text}'")
+                                        yield AudioOutput(
+                                            audio_path=temp_audio_path,
+                                            display_text=DisplayText(text=transcript_text, name=self.character_name, avatar=self.character_avatar),
+                                            transcript=transcript_text,
+                                            actions=actions
+                                        )
+
+                                # Track token usage if available
+                            if response.server_content.usage_metadata:
+                                prompt_tokens = response.server_content.usage_metadata.prompt_token_count or 0
+                                completion_tokens = response.server_content.usage_metadata.candidates_token_count or 0
+                                total_tokens = response.server_content.usage_metadata.total_token_count or 0
+
+                                self.total_prompt_tokens += prompt_tokens
+                                self.total_completion_tokens += completion_tokens
+                                self.total_tokens += total_tokens
+
+                                logger.info(f"Token usage - Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
+                                logger.info(f"Cumulative token usage - Prompt: {self.total_prompt_tokens}, Completion: {self.total_completion_tokens}, Total: {self.total_tokens}")
+
+                                # Store token usage in metadata if history is enabled
+                                if self.history_conf_uid and self.history_history_uid:
+                                    update_metadate(
+                                        self.history_conf_uid, self.history_history_uid,
+                                        {
+                                            "token_usage": {
+                                                "prompt_tokens": self.total_prompt_tokens,
+                                                "completion_tokens": self.total_completion_tokens,
+                                                "total_tokens": self.total_tokens
+                                            }
+                                        }
+                                    )
+
+                            if response.server_content.generation_complete:
+                                logger.info("Gemini indicated generation complete.")
+                                if self.history_conf_uid and self.history_history_uid and accumulated_transcript:
+                                    store_message(
+                                        conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
+                                        role="ai", content=accumulated_transcript,
+                                        name=self.character_name, avatar=self.character_avatar
+                                    )
+                                break  # End of this turn's response
+
+                        if response.go_away:
+                            logger.warning(f"Gemini session go_away received: {response.go_away.message}. Time left: {response.go_away.time_left}")
+                            # Store the time left for potential reconnection before timeout
+                            time_left_seconds = response.go_away.time_left.seconds if response.go_away.time_left else 0
+
+                            # If we have enough time left (more than 10 seconds), try to reconnect
+                            if time_left_seconds > 10 and self.session_resumption_handle:
+                                logger.info(f"Will attempt to reconnect with session handle before timeout ({time_left_seconds}s left)")
+                                if self.gemini_session:
+                                    await self.gemini_session.close()
+                                self.gemini_session = None
+                                # Force reconnection on next interaction
+                                await self._ensure_session()
+                            else:
+                                # Not enough time or no resumption handle, just close
+                                if self.gemini_session:
+                                    await self.gemini_session.close()
+                                self.gemini_session = None
+                            break
+                except Exception as e:
+                    logger.error(f"Error during Gemini Live chat: {e}")
+                    # If we get an error during streaming, try falling back to compatibility mode
+                    logger.warning("Falling back to compatibility mode due to streaming error")
+                    self.compatibility_mode = True
+
+                    # Try again with compatibility mode
+                    try:
+                        # Close the current session if it exists
+                        if self.gemini_session:
+                            await self.gemini_session.close()
+                        self.gemini_session = None
+
+                        # Reconnect in compatibility mode
+                        await self._ensure_session()
+
+                        # Generate a response using the model in compatibility mode
+                        if self.gemini_session:
+                            response = await self.gemini_session.generate_content_async(text_to_send)
+                            response_text = response.text
+
+                            # Create actions for expressions
+                            actions = Actions()
+                            if self.live2d_model and response_text:
+                                expression_tuples = self.live2d_model.extract_emotion(response_text)
+                                if expression_tuples:
+                                    interpolated_expressions = [
+                                        self.live2d_model.get_interpolated_expression(idx, intensity)
+                                        for idx, intensity in expression_tuples
+                                    ]
+                                    actions.expressions = interpolated_expressions
+
+                            # Yield the response
+                            yield AudioOutput(
+                                audio_path=None,  # No audio in compatibility mode
+                                display_text=DisplayText(
+                                    text=response_text,
+                                    name=self.character_name,
+                                    avatar=self.character_avatar
+                                ),
+                                transcript=response_text,
+                                actions=actions
+                            )
+                    except Exception as e2:
+                        logger.error(f"Error in compatibility mode fallback: {e2}")
                         yield AudioOutput(
-                            audio_path=None,  # No audio for tool notification
+                            audio_path=None,
                             display_text=DisplayText(
-                                text="Using tools to help answer your question...",
+                                text=f"Error: {str(e2)}",
                                 name=self.character_name,
                                 avatar=self.character_avatar
                             ),
-                            transcript="Using tools to help answer your question...",
+                            transcript=f"Error: {str(e2)}",
                             actions=Actions()
                         )
+                finally:
+                    logger.debug("Exiting Gemini chat loop for this turn.")
+                    # Ensure active audio stream is properly ended if not interrupted by user's speech
+                    if self.active_audio_stream and not self.is_interrupted and not self.compatibility_mode:
+                        if self.gemini_session and not getattr(self.gemini_session, '_conn', None) is None and not getattr(getattr(self.gemini_session, '_conn', None), 'closed', True):
+                            try:
+                                await self.gemini_session.send_realtime_input(audio_stream_end=True)
+                            except Exception as e_stream_end:
+                                logger.warning(f"Could not send audio_stream_end: {e_stream_end}")
+                        self.active_audio_stream = False
+            except Exception as e:
+                logger.error(f"Error in full mode Gemini Live chat: {e}")
+                # If we get an error in full mode, try falling back to compatibility mode
+                logger.warning("Falling back to compatibility mode due to error")
+                self.compatibility_mode = True
 
-                    if response.server_content.model_turn and response.server_content.model_turn.parts:
-                        for part in response.server_content.model_turn.parts:
-                            if part.inline_data and part.inline_data.mime_type.startswith("audio/"):
-                                audio_data = part.inline_data.data
-                                # Assuming output_audio_transcription is enabled
-                                transcript_text = ""
-                                if response.server_content.output_transcription:
-                                    transcript_text = response.server_content.output_transcription.text
-                                    accumulated_transcript += transcript_text  # Only append if new
-                                    logger.debug(f"Gemini audio transcript part: {transcript_text}")
-
-                                # Extract expressions from transcript if Live2D model is available
-                                actions = Actions()
-                                if self.live2d_model and transcript_text:
-                                    expression_tuples = self.live2d_model.extract_emotion(transcript_text)
-                                    if expression_tuples:
-                                        interpolated_expressions = [
-                                            self.live2d_model.get_interpolated_expression(idx, intensity)
-                                            for idx, intensity in expression_tuples
-                                        ]
-                                        actions.expressions = interpolated_expressions
-
-                                # Save audio to a temporary file
-                                temp_audio_path = f"cache/gemini_live_{id(audio_data)}.wav"
-                                with wave.open(temp_audio_path, "wb") as wf:
-                                    wf.setnchannels(1)  # Mono
-                                    wf.setsampwidth(2)  # 16-bit
-                                    wf.setframerate(24000)  # Gemini's output sample rate
-                                    wf.writeframes(audio_data)
-
-                                logger.debug(f"Saved audio to {temp_audio_path} with transcript: '{transcript_text}'")
-                                yield AudioOutput(
-                                    audio_path=temp_audio_path,
-                                    display_text=DisplayText(text=transcript_text, name=self.character_name, avatar=self.character_avatar),
-                                    transcript=transcript_text,
-                                    actions=actions
-                                )
-
-                        # Track token usage if available
-                    if response.server_content.usage_metadata:
-                        prompt_tokens = response.server_content.usage_metadata.prompt_token_count or 0
-                        completion_tokens = response.server_content.usage_metadata.candidates_token_count or 0
-                        total_tokens = response.server_content.usage_metadata.total_token_count or 0
-
-                        self.total_prompt_tokens += prompt_tokens
-                        self.total_completion_tokens += completion_tokens
-                        self.total_tokens += total_tokens
-
-                        logger.info(f"Token usage - Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
-                        logger.info(f"Cumulative token usage - Prompt: {self.total_prompt_tokens}, Completion: {self.total_completion_tokens}, Total: {self.total_tokens}")
-
-                        # Store token usage in metadata if history is enabled
-                        if self.history_conf_uid and self.history_history_uid:
-                            update_metadate(
-                                self.history_conf_uid, self.history_history_uid,
-                                {
-                                    "token_usage": {
-                                        "prompt_tokens": self.total_prompt_tokens,
-                                        "completion_tokens": self.total_completion_tokens,
-                                        "total_tokens": self.total_tokens
-                                    }
-                                }
-                            )
-
-                    if response.server_content.generation_complete:
-                        logger.info("Gemini indicated generation complete.")
-                        if self.history_conf_uid and self.history_history_uid and accumulated_transcript:
-                            store_message(
-                                conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
-                                role="ai", content=accumulated_transcript,
-                                name=self.character_name, avatar=self.character_avatar
-                            )
-                        break  # End of this turn's response
-
-                if response.go_away:
-                    logger.warning(f"Gemini session go_away received: {response.go_away.message}. Time left: {response.go_away.time_left}")
-                    # Store the time left for potential reconnection before timeout
-                    time_left_seconds = response.go_away.time_left.seconds if response.go_away.time_left else 0
-
-                    # If we have enough time left (more than 10 seconds), try to reconnect
-                    if time_left_seconds > 10 and self.session_resumption_handle:
-                        logger.info(f"Will attempt to reconnect with session handle before timeout ({time_left_seconds}s left)")
-                        if self.gemini_session:
+                # Try again with compatibility mode
+                try:
+                    # Close the current session if it exists
+                    if self.gemini_session:
+                        try:
                             await self.gemini_session.close()
-                        self.gemini_session = None
-                        # Force reconnection on next interaction
-                        await self._ensure_session()
-                    else:
-                        # Not enough time or no resumption handle, just close
-                        if self.gemini_session:
-                            await self.gemini_session.close()
-                        self.gemini_session = None
-                    break
-        except Exception as e:
-            logger.error(f"Error during Gemini Live chat: {e}")
-            yield AudioOutput(
-                audio_path=None,
-                display_text=DisplayText(text=f"Error: {str(e)}", name=self.character_name, avatar=self.character_avatar),
-                transcript=f"Error: {str(e)}",
-                actions=Actions()
-            )
-        finally:
-            logger.debug("Exiting Gemini chat loop for this turn.")
-            # Ensure active audio stream is properly ended if not interrupted by user's speech
-            if self.active_audio_stream and not self.is_interrupted:
-                if self.gemini_session and not self.gemini_session._conn.closed:  # type: ignore
-                    try:
-                        await self.gemini_session.send_realtime_input(audio_stream_end=True)
-                    except Exception as e_stream_end:
-                        logger.warning(f"Could not send audio_stream_end: {e_stream_end}")
-                self.active_audio_stream = False
+                        except:
+                            pass
+                    self.gemini_session = None
+
+                    # Reconnect in compatibility mode
+                    await self._ensure_session()
+
+                    # Generate a response using the model in compatibility mode
+                    if self.gemini_session:
+                        response = await self.gemini_session.generate_content_async(text_to_send)
+                        response_text = response.text
+
+                        # Create actions for expressions
+                        actions = Actions()
+                        if self.live2d_model and response_text:
+                            expression_tuples = self.live2d_model.extract_emotion(response_text)
+                            if expression_tuples:
+                                interpolated_expressions = [
+                                    self.live2d_model.get_interpolated_expression(idx, intensity)
+                                    for idx, intensity in expression_tuples
+                                ]
+                                actions.expressions = interpolated_expressions
+
+                        # Yield the response
+                        yield AudioOutput(
+                            audio_path=None,  # No audio in compatibility mode
+                            display_text=DisplayText(
+                                text=response_text,
+                                name=self.character_name,
+                                avatar=self.character_avatar
+                            ),
+                            transcript=response_text,
+                            actions=actions
+                        )
+                except Exception as e2:
+                    logger.error(f"Error in compatibility mode fallback: {e2}")
+                    yield AudioOutput(
+                        audio_path=None,
+                        display_text=DisplayText(
+                            text=f"Error: {str(e2)}",
+                            name=self.character_name,
+                            avatar=self.character_avatar
+                        ),
+                        transcript=f"Error: {str(e2)}",
+                        actions=Actions()
+                    )
 
     async def stream_audio_chunk(self, audio_chunk: bytes):
         """
@@ -445,6 +686,15 @@ class GeminiLiveAgent(AgentInterface):
         Args:
             audio_chunk: bytes - Raw audio data (PCM 16-bit, 16kHz)
         """
+        if self.compatibility_mode:
+            logger.debug("Audio streaming not supported in compatibility mode")
+            # In compatibility mode, we don't support audio streaming
+            # Just accumulate the audio chunks for potential future use
+            self.current_turn_audio_buffer.extend(audio_chunk)
+            self.active_audio_stream = True
+            return
+
+        # In full mode, try to stream the audio
         await self._ensure_session()
         if self.gemini_session and not self.is_interrupted:
             try:
@@ -462,15 +712,32 @@ class GeminiLiveAgent(AgentInterface):
                 self.active_audio_stream = True
             except Exception as e:
                 logger.error(f"Error sending audio chunk to Gemini: {e}")
+                # If we get an error, fall back to compatibility mode
+                logger.warning("Falling back to compatibility mode due to audio streaming error")
+                self.compatibility_mode = True
+                # Accumulate the audio chunk in case we need it later
+                self.current_turn_audio_buffer.extend(audio_chunk)
+                self.active_audio_stream = True
                 # Potentially close session or mark as needing reconnection
                 if self.gemini_session:
-                    await self.gemini_session.close()
+                    try:
+                        await self.gemini_session.close()
+                    except:
+                        pass
                 self.gemini_session = None
         else:
             logger.warning("Gemini session not available or interrupted, cannot stream audio chunk.")
 
     async def end_audio_stream(self):
         """Signal the end of the audio stream to Gemini Live."""
+        if self.compatibility_mode:
+            logger.debug("Audio streaming not supported in compatibility mode")
+            # Reset the audio buffer
+            self.current_turn_audio_buffer = bytearray()
+            self.active_audio_stream = False
+            return
+
+        # In full mode, signal the end of the audio stream
         if self.gemini_session and self.active_audio_stream and not self.is_interrupted:
             try:
                 logger.debug("Sending audio_stream_end to Gemini.")
@@ -487,6 +754,9 @@ class GeminiLiveAgent(AgentInterface):
                 await self.gemini_session.send_client_content(turn_complete=True)
             except Exception as e:
                 logger.error(f"Error sending audio_stream_end to Gemini: {e}")
+                # If we get an error, fall back to compatibility mode
+                logger.warning("Falling back to compatibility mode due to audio streaming error")
+                self.compatibility_mode = True
             finally:
                 self.active_audio_stream = False
         else:
@@ -643,6 +913,16 @@ class GeminiLiveAgent(AgentInterface):
     async def close_session(self):
         """Close the Gemini Live session."""
         if self.gemini_session:
-            logger.info("Closing Gemini Live session.")
-            await self.gemini_session.close()
-            self.gemini_session = None
+            if self.compatibility_mode:
+                logger.info("Closing Gemini session (compatibility mode).")
+                # In compatibility mode, we don't need to close anything
+                self.gemini_session = None
+            else:
+                # In full mode, properly close the session
+                logger.info("Closing Gemini Live session.")
+                try:
+                    await self.gemini_session.close()
+                except Exception as e:
+                    logger.warning(f"Error closing Gemini Live session: {e}")
+                finally:
+                    self.gemini_session = None
