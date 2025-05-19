@@ -68,7 +68,7 @@ def test_kokoro_tts(config_path=None, text=None, output_path=None, play_audio=Tr
         "engine_type": tts_config.get("TTS_ENGINE", "kokoro_tts"),
         "voice": tts_config.get("TTS_VOICE", "af_heart"),
         "language": tts_config.get("TTS_LANGUAGE", "en"),
-        "device": tts_config.get("TTS_DEVICE", "cpu"),
+        "device": "cpu",  # Force CPU mode to avoid CUDA issues
         "cache_dir": tts_config.get("TTS_CACHE_DIR", "cache"),
         "sample_rate": tts_config.get("TTS_SAMPLE_RATE", 24000),
         "output_format": tts_config.get("TTS_OUTPUT_FORMAT", "wav"),

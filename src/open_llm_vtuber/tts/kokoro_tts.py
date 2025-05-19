@@ -6,7 +6,10 @@ which is a lightweight, high-quality TTS model with emotional capabilities.
 It includes support for the Misaki tokenizer for Japanese language processing.
 """
 
+# Disable CUDA for transformers to avoid CUDA issues
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
 import asyncio
 import tempfile
 import re
@@ -40,7 +43,7 @@ class TTSEngine(TTSInterface):
         self,
         voice: str = "af_heart",
         language: str = "en",
-        device: str = "cuda" if torch.cuda.is_available() else "cpu",
+        device: str = "cpu",  # Always use CPU to avoid CUDA issues
         repo_id: str = None,
         cache_dir: str = "cache",
         sample_rate: int = 24000,

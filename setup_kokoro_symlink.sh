@@ -8,12 +8,20 @@ HF_CACHE_DIR="/home/vi/.cache/huggingface/hub"
 MODEL_DIR="models--hexgrad--Kokoro-82M"
 SNAPSHOT_HASH="496dba118d1a58f5f3db2efc88dbdc216e0483fc89fe6e47ee1f2c53f18ad1e4"
 SOURCE_MODEL_DIR="$(pwd)/models/kokoro"
+ORIGINAL_MODEL_DIR="$HOME/alltalk_tts/models/kokoro"
 
-# Check if the model files exist
-if [ ! -d "$SOURCE_MODEL_DIR" ]; then
-    echo "Error: Kokoro-82M model files not found at $SOURCE_MODEL_DIR"
-    echo "Please run: mkdir -p models/kokoro && ln -sf ~/alltalk_tts/models/kokoro/* models/kokoro/"
+# Check if the original model files exist
+if [ ! -d "$ORIGINAL_MODEL_DIR" ]; then
+    echo "Error: Original Kokoro-82M model files not found at $ORIGINAL_MODEL_DIR"
+    echo "Please ensure the model files are downloaded to ~/alltalk_tts/models/kokoro/"
     exit 1
+fi
+
+# Create the models directory if it doesn't exist
+if [ ! -d "$SOURCE_MODEL_DIR" ]; then
+    echo "Creating models directory and setting up symbolic links..."
+    mkdir -p "$(pwd)/models/kokoro"
+    ln -sf "$ORIGINAL_MODEL_DIR"/* "$(pwd)/models/kokoro/"
 fi
 
 # Create the directory structure
