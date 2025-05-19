@@ -1,18 +1,22 @@
 import asyncio
 import json
-from typing import Dict, Optional, Callable
+from typing import Dict, Optional, Callable, Union, List, Any
 
 import numpy as np
 from fastapi import WebSocket
 from loguru import logger
+
+from ..agent.agents.gemini_live_agent import GeminiLiveAgent
 
 from ..chat_group import ChatGroupManager
 from ..chat_history_manager import store_message
 from ..service_context import ServiceContext
 from .group_conversation import process_group_conversation
 from .single_conversation import process_single_conversation
-from .conversation_utils import EMOJI_LIST
-from .types import GroupConversationState
+from .conversation_utils import EMOJI_LIST, send_conversation_start_signals, finalize_conversation_turn
+from .types import GroupConversationState, WebSocketSend
+from ..agent.input_types import BatchInput, TextData, TextSource
+from ..utils.stream_audio import prepare_audio_payload
 
 
 async def handle_conversation_trigger(
@@ -29,6 +33,25 @@ async def handle_conversation_trigger(
     broadcast_to_group: Callable,
 ) -> None:
     """Handle triggers that start a conversation"""
+    # Special handling for Gemini Live Agent when audio ends
+    if msg_type == "mic-audio-end" and isinstance(context.agent_engine, GeminiLiveAgent):
+        # Signal the end of audio stream to Gemini Live
+        await context.agent_engine.end_audio_stream()
+
+        # For Gemini Live, we'll create a special conversation task that just processes responses
+        # from the already-streaming audio
+        current_conversation_tasks[client_uid] = asyncio.create_task(
+            process_gemini_live_conversation(
+                context=context,
+                websocket_send=websocket.send_text,
+                client_uid=client_uid,
+                images=data.get("images")
+            )
+        )
+        # Return early as we've already set up the task
+        return
+
+    # Standard handling for other agents or message types
     if msg_type == "ai-speak-signal":
         user_input = ""
         await websocket.send_text(
@@ -41,7 +64,7 @@ async def handle_conversation_trigger(
         )
     elif msg_type == "text-input":
         user_input = data.get("text", "")
-    else:  # mic-audio-end
+    else:  # mic-audio-end for non-Gemini agents
         user_input = received_data_buffers[client_uid]
         received_data_buffers[client_uid] = np.array([])
 
@@ -116,6 +139,84 @@ async def handle_individual_interrupt(
                 role="system",
                 content="[Interrupted by user]",
             )
+
+
+async def process_gemini_live_conversation(
+    context: ServiceContext,
+    websocket_send: WebSocketSend,
+    client_uid: str,
+    images: Optional[List[Dict[str, Any]]] = None,
+) -> None:
+    """Process a conversation with Gemini Live agent.
+
+    This function is specifically for handling the Gemini Live agent's responses
+    after audio has been streamed to it. It doesn't need to send audio to Gemini
+    as that's already been done through the stream_audio_chunk method.
+
+    Args:
+        context: Service context containing all configurations and engines
+        websocket_send: WebSocket send function
+        client_uid: Client unique identifier
+        images: Optional list of image data
+    """
+    try:
+        # Send initial signals
+        await send_conversation_start_signals(websocket_send)
+        logger.info(f"Gemini Live conversation started for {client_uid}!")
+
+        # Create a minimal batch input with any images
+        # The text content isn't important as Gemini already has the audio
+        batch_input = BatchInput(
+            texts=[TextData(source=TextSource.INPUT, content="")],
+            images=images
+        )
+
+        # Process Gemini Live responses
+        gemini_agent = context.agent_engine
+        full_response = ""
+
+        try:
+            async for output in gemini_agent.chat(batch_input):
+                # AudioOutput contains audio_path, display_text, transcript, and actions
+                audio_payload = prepare_audio_payload(
+                    audio_path=output.audio_path,
+                    display_text=output.display_text,
+                    actions=output.actions.to_dict() if output.actions else None,
+                )
+                await websocket_send(json.dumps(audio_payload))
+                full_response += output.transcript
+        except asyncio.CancelledError:
+            logger.info(f"Gemini Live conversation for {client_uid} cancelled.")
+            raise
+        except Exception as e:
+            logger.error(f"Error in Gemini Live conversation: {e}")
+            await websocket_send(json.dumps({"type": "error", "message": str(e)}))
+            raise
+
+        # Signal that backend synthesis is complete
+        await websocket_send(json.dumps({"type": "backend-synth-complete"}))
+        await websocket_send(json.dumps({"type": "force-new-message"}))
+        await websocket_send(json.dumps({"type": "control", "text": "conversation-chain-end"}))
+
+        # Store the conversation in history if available
+        if context.history_uid and full_response:
+            store_message(
+                conf_uid=context.character_config.conf_uid,
+                history_uid=context.history_uid,
+                role="ai",
+                content=full_response,
+                name=context.character_config.character_name,
+                avatar=context.character_config.avatar,
+            )
+            logger.info(f"AI response: {full_response}")
+
+    except asyncio.CancelledError:
+        logger.info(f"Gemini Live conversation for {client_uid} cancelled because interrupted.")
+        raise
+    except Exception as e:
+        logger.error(f"Error in Gemini Live conversation: {e}")
+        await websocket_send(json.dumps({"type": "error", "message": f"Conversation error: {str(e)}"}))
+        raise
 
 
 async def handle_group_interrupt(

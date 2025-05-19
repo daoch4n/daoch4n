@@ -1,10 +1,12 @@
-from typing import Type, Literal
+from typing import Type, Literal, Optional
 from loguru import logger
 
 from .agents.agent_interface import AgentInterface
 from .agents.basic_memory_agent import BasicMemoryAgent
 from .stateless_llm_factory import LLMFactory as StatelessLLMFactory
 from .agents.hume_ai import HumeAIAgent
+from .agents.gemini_live_agent import GeminiLiveAgent
+from ..config_manager.agent import GeminiLiveConfig
 
 
 class AgentFactory:
@@ -16,6 +18,8 @@ class AgentFactory:
         system_prompt: str,
         live2d_model=None,
         tts_preprocessor_config=None,
+        character_name: Optional[str] = "AI",
+        character_avatar: Optional[str] = None,
         **kwargs,
     ) -> Type[AgentInterface]:
         """Create an agent based on the configuration.
@@ -97,6 +101,21 @@ class AgentFactory:
                 host=settings.get("host", "api.hume.ai"),
                 config_id=settings.get("config_id"),
                 idle_timeout=settings.get("idle_timeout", 15),
+            )
+
+        elif conversation_agent_choice == "gemini_live_agent":
+            gemini_config_data = agent_settings.get("gemini_live_agent")
+            if not gemini_config_data:
+                raise ValueError("Gemini Live Agent settings not found in configuration.")
+            # Validate with Pydantic model
+            gemini_live_config = GeminiLiveConfig(**gemini_config_data)
+
+            # Gemini system_prompt is part of its own config, not the generic one
+            return GeminiLiveAgent(
+                config=gemini_live_config,
+                character_name=character_name,
+                character_avatar=character_avatar,
+                live2d_model=live2d_model
             )
 
         else:

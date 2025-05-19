@@ -88,7 +88,7 @@ def test_alltalk_tts(config_path=None, text=None, output_path=None, play_audio=T
     kwargs = {
         "engine_type": tts_config.get("TTS_ENGINE", "alltalk_tts"),
         "api_url": tts_config.get("TTS_API_URL", "http://127.0.0.1:7851"),
-        "voice": tts_config.get("TTS_VOICE", "kokoro_jf_alpha"),
+        "voice": tts_config.get("TTS_VOICE", "en_US-ljspeech-high.onnx"),
         "language": tts_config.get("TTS_LANGUAGE", "ja"),
         "rvc_enabled": tts_config.get("TTS_RVC_ENABLED", False),
         "rvc_model": tts_config.get("TTS_RVC_MODEL", "Disabled"),
