@@ -62,7 +62,27 @@ def test_alltalk_tts(config_path=None, text=None, output_path=None, play_audio=T
         )
 
     config = load_config(config_path)
-    tts_config = config.get("TTS_CONFIG", {})
+
+    # Extract the TTS configuration from the conf.yaml file
+    tts_config = {}
+    if "tts_config" in config:
+        if config["tts_config"].get("tts_model") == "alltalk_tts" and "alltalk_tts" in config["tts_config"]:
+            # Extract the AllTalk TTS configuration
+            alltalk_config = config["tts_config"]["alltalk_tts"]
+            tts_config = {
+                "TTS_ENGINE": "alltalk_tts",
+                "TTS_API_URL": alltalk_config.get("api_url"),
+                "TTS_VOICE": alltalk_config.get("voice"),
+                "TTS_LANGUAGE": alltalk_config.get("language"),
+                "TTS_RVC_ENABLED": alltalk_config.get("rvc_enabled"),
+                "TTS_RVC_MODEL": alltalk_config.get("rvc_model"),
+                "TTS_RVC_PITCH": alltalk_config.get("rvc_pitch"),
+                "TTS_OUTPUT_FORMAT": alltalk_config.get("output_format"),
+                "TTS_EMOTION_MAPPING": alltalk_config.get("emotion_mapping"),
+            }
+        else:
+            # Fallback to the TTS_CONFIG if available
+            tts_config = config.get("TTS_CONFIG", {})
 
     # Create the TTS engine
     kwargs = {
@@ -170,7 +190,17 @@ if __name__ == "__main__":
         custom_config = load_config(config_path)
 
         # Update the parameters in the configuration
-        if "TTS_CONFIG" in custom_config:
+        if "tts_config" in custom_config and "alltalk_tts" in custom_config["tts_config"]:
+            if voice:
+                custom_config["tts_config"]["alltalk_tts"]["voice"] = voice
+            if rvc_enabled:
+                custom_config["tts_config"]["alltalk_tts"]["rvc_enabled"] = True
+            if rvc_model:
+                custom_config["tts_config"]["alltalk_tts"]["rvc_model"] = rvc_model
+            if rvc_pitch is not None:
+                custom_config["tts_config"]["alltalk_tts"]["rvc_pitch"] = rvc_pitch
+        elif "TTS_CONFIG" in custom_config:
+            # Fallback to the old format
             if voice:
                 custom_config["TTS_CONFIG"]["TTS_VOICE"] = voice
             if rvc_enabled:
