@@ -1,5 +1,6 @@
 import os
 import json
+from typing import Dict, Any
 
 from loguru import logger
 from fastapi import WebSocket
@@ -11,6 +12,7 @@ from .tts.tts_interface import TTSInterface
 from .vad.vad_interface import VADInterface
 from .agent.agents.agent_interface import AgentInterface
 from .translate.translate_interface import TranslateInterface
+from .mcp.client import MCPClient
 
 from .asr.asr_factory import ASRFactory
 from .tts.tts_factory import TTSFactory
@@ -49,6 +51,8 @@ class ServiceContext:
         # translate_engine can be none if translation is disabled
         self.vad_engine: VADInterface | None = None
         self.translate_engine: TranslateInterface | None = None
+        # mcp_client can be none if MCP is disabled
+        self.mcp_client: MCPClient | None = None
 
         # the system prompt is a combination of the persona prompt and live2d expression prompt
         self.system_prompt: str = None
@@ -69,6 +73,8 @@ class ServiceContext:
             f"    Agent Config: {json.dumps(self.character_config.agent_config.model_dump(), indent=6) if self.character_config.agent_config else 'None'}\n"
             f"  VAD Engine: {type(self.vad_engine).__name__ if self.vad_engine else 'Not Loaded'}\n"
             f"    Agent Config: {json.dumps(self.character_config.vad_config.model_dump(), indent=6) if self.character_config.vad_config else 'None'}\n"
+            f"  MCP Client: {'Initialized' if self.mcp_client else 'Not Initialized'}\n"
+            f"    Config: {json.dumps(self.system_config.mcp_config.model_dump(), indent=6) if self.system_config and self.system_config.mcp_config else 'None'}\n"
             f"  System Prompt: {self.system_prompt or 'Not Set'}"
         )
 
@@ -85,6 +91,7 @@ class ServiceContext:
         vad_engine: VADInterface,
         agent_engine: AgentInterface,
         translate_engine: TranslateInterface | None,
+        mcp_client: MCPClient | None = None,
     ) -> None:
         """
         Load the ServiceContext with the reference of the provided instances.
@@ -104,6 +111,7 @@ class ServiceContext:
         self.vad_engine = vad_engine
         self.agent_engine = agent_engine
         self.translate_engine = translate_engine
+        self.mcp_client = mcp_client
 
         logger.debug(f"Loaded service context with cache: {character_config}")
 
@@ -153,6 +161,13 @@ class ServiceContext:
             self.init_translate(
                 config.character_config.tts_preprocessor_config.translator_config
             )
+
+        # Initialize MCP client if configured
+        if config.system_config and config.system_config.mcp_config:
+            # This is an async method, but load_from_config is not async
+            # We'll need to initialize MCP client when the server starts
+            # For now, just log that MCP will be initialized later
+            logger.info("MCP client will be initialized when the server starts")
 
         # store typed config references
         self.config = config
@@ -304,6 +319,153 @@ class ServiceContext:
         else:
             logger.info("Translation already initialized with the same config.")
 
+    async def init_mcp(self) -> None:
+        """Initialize or update the MCP client based on the configuration."""
+
+        if not self.system_config or not self.system_config.mcp_config:
+            logger.debug("MCP is not configured.")
+            return
+
+        mcp_config = self.system_config.mcp_config
+
+        if not mcp_config.enabled:
+            logger.debug("MCP is disabled.")
+            return
+
+        if not self.mcp_client:
+            logger.info("Initializing MCP client")
+            self.mcp_client = MCPClient(mcp_config)
+            await self.mcp_client.initialize()
+            await self._register_default_mcp_resources()
+        elif self.mcp_client.config != mcp_config:
+            logger.info("Updating MCP client configuration")
+            await self.mcp_client.shutdown()
+            self.mcp_client = MCPClient(mcp_config)
+            await self.mcp_client.initialize()
+            await self._register_default_mcp_resources()
+        else:
+            logger.debug("MCP client already initialized with the same config.")
+
+    async def _register_default_mcp_resources(self) -> None:
+        """Register default resources with the MCP client."""
+        if not self.mcp_client:
+            return
+
+        from .mcp.default_resources import (
+            create_user_preferences_resource,
+            create_live2d_info_resource,
+            create_platform_info_resource,
+            create_chat_history_resource,
+        )
+
+        from .mcp.default_tools import (
+            create_expression_tool,
+            create_motion_tool,
+            create_weather_tool,
+            create_search_tool,
+        )
+
+        # Register resources
+
+        # Register user preferences
+        self.mcp_client.register_resource(
+            create_user_preferences_resource(self.character_config)
+        )
+
+        # Register Live2D model information
+        if self.live2d_model:
+            self.mcp_client.register_resource(
+                create_live2d_info_resource(self.live2d_model)
+            )
+
+        # Register platform information
+        self.mcp_client.register_resource(
+            create_platform_info_resource()
+        )
+
+        # Register chat history if available
+        if self.history_uid:
+            from .chat_history_manager import get_history
+
+            history = get_history(
+                self.character_config.conf_uid,
+                self.history_uid,
+            )
+
+            self.mcp_client.register_resource(
+                create_chat_history_resource(history)
+            )
+
+        # Register tools
+
+        # Register Live2D expression tool
+        if self.live2d_model:
+            expression_tool = create_expression_tool(self.live2d_model)
+
+            # Set the handler for the expression tool
+            async def handle_expression(expression: str, duration: float = 3.0) -> Dict[str, Any]:
+                """Handle expression tool invocation."""
+                try:
+                    # Check if expression exists
+                    if expression not in self.live2d_model.expressions:
+                        return {
+                            "success": False,
+                            "error": f"Expression '{expression}' not found. Available expressions: {', '.join(self.live2d_model.expressions)}",
+                        }
+
+                    # Return success (actual expression will be handled by the frontend)
+                    return {
+                        "success": True,
+                        "expression": expression,
+                        "duration": duration,
+                    }
+                except Exception as e:
+                    logger.error(f"Error handling expression tool: {e}")
+                    return {
+                        "success": False,
+                        "error": str(e),
+                    }
+
+            expression_tool.handler = handle_expression
+            self.mcp_client.register_tool(expression_tool)
+
+        # Register Live2D motion tool
+        if self.live2d_model:
+            motion_tool = create_motion_tool(self.live2d_model)
+
+            # Set the handler for the motion tool
+            async def handle_motion(motion: str, loop: bool = False) -> Dict[str, Any]:
+                """Handle motion tool invocation."""
+                try:
+                    # Check if motion exists
+                    if motion not in self.live2d_model.motions:
+                        return {
+                            "success": False,
+                            "error": f"Motion '{motion}' not found. Available motions: {', '.join(self.live2d_model.motions)}",
+                        }
+
+                    # Return success (actual motion will be handled by the frontend)
+                    return {
+                        "success": True,
+                        "motion": motion,
+                        "loop": loop,
+                    }
+                except Exception as e:
+                    logger.error(f"Error handling motion tool: {e}")
+                    return {
+                        "success": False,
+                        "error": str(e),
+                    }
+
+            motion_tool.handler = handle_motion
+            self.mcp_client.register_tool(motion_tool)
+
+        # Register weather and search tools (these will be handled by external servers)
+        self.mcp_client.register_tool(create_weather_tool())
+        self.mcp_client.register_tool(create_search_tool())
+
+        logger.info("Registered default MCP resources and tools")
+
     # ==== utils
 
     def construct_system_prompt(self, persona_prompt: str) -> str:
@@ -328,6 +490,13 @@ class ServiceContext:
                 prompt_content = prompt_content.replace(
                     "[<insert_emomap_keys>]", self.live2d_model.emo_str
                 )
+            elif prompt_name == "mcp_tools_prompt" and self.mcp_client:
+                # Replace placeholders with actual MCP tools and resources
+                tools_json = json.dumps(self.mcp_client.get_tools_for_prompt(), indent=2)
+                resources_json = json.dumps(self.mcp_client.get_resources_for_prompt(), indent=2)
+
+                prompt_content = prompt_content.replace("{{tools}}", tools_json)
+                prompt_content = prompt_content.replace("{{resources}}", resources_json)
 
             persona_prompt += prompt_content
 

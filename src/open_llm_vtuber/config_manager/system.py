@@ -1,7 +1,8 @@
 # config_manager/system.py
 from pydantic import Field, model_validator
-from typing import Dict, ClassVar
+from typing import Dict, ClassVar, Optional
 from .i18n import I18nMixin, Description
+from ..mcp.config import MCPConfig
 
 
 class SystemConfig(I18nMixin):
@@ -12,6 +13,7 @@ class SystemConfig(I18nMixin):
     port: int = Field(..., alias="port")
     config_alts_dir: str = Field(..., alias="config_alts_dir")
     tool_prompts: Dict[str, str] = Field(..., alias="tool_prompts")
+    mcp_config: Optional[MCPConfig] = Field(None, alias="mcp_config")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "conf_version": Description(en="Configuration version", zh="配置文件版本"),
@@ -23,6 +25,10 @@ class SystemConfig(I18nMixin):
         "tool_prompts": Description(
             en="Tool prompts to be inserted into persona prompt",
             zh="要插入到角色提示词中的工具提示词",
+        ),
+        "mcp_config": Description(
+            en="Model Context Protocol (MCP) configuration",
+            zh="模型上下文协议 (MCP) 配置",
         ),
     }
 
