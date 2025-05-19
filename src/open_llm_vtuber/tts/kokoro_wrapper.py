@@ -19,11 +19,11 @@ class KokoroWrapper:
     """
     Wrapper for the Kokoro TTS engine to use the GenericTagger.
     """
-    
+
     def __init__(self, voice="jf_alpha", language="ja", device="cpu", repo_id=None, cache_dir="cache"):
         """
         Initialize the Kokoro TTS wrapper.
-        
+
         Args:
             voice (str): The voice to use.
             language (str): The language to use.
@@ -36,17 +36,17 @@ class KokoroWrapper:
         self.device = device
         self.repo_id = repo_id
         self.cache_dir = cache_dir
-        
+
         # Create the tagger with the correct dictionary
         self.tagger = self._create_tagger()
-        
+
         # Initialize the Kokoro pipeline
         self._initialize_pipeline()
-    
+
     def _create_tagger(self):
         """
         Create a tagger with the correct dictionary.
-        
+
         Returns:
             GenericTagger: The tagger instance.
         """
@@ -59,11 +59,11 @@ class KokoroWrapper:
                         dicdir = line.split('=')[1].strip()
                         logger.info(f"Using MeCab dictionary: {dicdir}")
                         return GenericTagger(f'-d {dicdir}')
-        
+
         # Fallback to ipadic-utf8
         logger.info("Using fallback MeCab dictionary: /var/lib/mecab/dic/ipadic-utf8")
         return GenericTagger('-d /var/lib/mecab/dic/ipadic-utf8')
-    
+
     def _initialize_pipeline(self):
         """
         Initialize the Kokoro pipeline.
@@ -71,51 +71,87 @@ class KokoroWrapper:
         try:
             # Monkey patch the JAG2P class to use our tagger
             from misaki import ja
-            
+
             # Save the original JAG2P.__init__ method
             original_init = ja.JAG2P.__init__
-            
+
             # Define a new __init__ method that uses our tagger
             def new_init(self, *args, **kwargs):
                 original_init(self, *args, **kwargs)
                 from misaki.cutlet import Cutlet
                 self.cutlet = Cutlet(tagger=KokoroWrapper.tagger)
-            
+
             # Replace the JAG2P.__init__ method with our new method
             ja.JAG2P.__init__ = new_init
-            
+
             # Set the tagger as a class variable
             KokoroWrapper.tagger = self.tagger
-            
+
+            # Convert language code to Kokoro format (e.g., 'ja' to 'j')
+            lang_code = self._convert_language_code(self.language)
+
             # Initialize the Kokoro pipeline
-            self.pipeline = KPipeline(
-                voice=self.voice,
-                language=self.language,
-                device=self.device,
-                repo_id=self.repo_id,
-                cache_dir=self.cache_dir
-            )
-            
+            if self.repo_id:
+                self.pipeline = KPipeline(
+                    lang_code=lang_code,
+                    repo_id=self.repo_id,
+                    device=self.device
+                )
+            else:
+                self.pipeline = KPipeline(
+                    lang_code=lang_code,
+                    device=self.device
+                )
+
             logger.info(f"Initialized Kokoro pipeline with voice: {self.voice}")
         except Exception as e:
             logger.error(f"Failed to initialize Kokoro pipeline: {e}")
             raise
-    
+
+    def _convert_language_code(self, language: str) -> str:
+        """
+        Convert standard language code to Kokoro format.
+
+        Args:
+            language: Standard language code (e.g., 'en', 'ja')
+
+        Returns:
+            Kokoro language code ('a' for English, 'j' for Japanese, etc.)
+        """
+        # Kokoro uses 'a' for English
+        if language.lower() in ['en', 'eng', 'english']:
+            return 'a'
+        # Kokoro uses 'j' for Japanese
+        elif language.lower() in ['ja', 'jp', 'jpn', 'japanese']:
+            return 'j'
+        # For other languages, use the original code
+        return language
+
     def generate(self, text, output_path=None):
         """
         Generate speech from text.
-        
+
         Args:
             text (str): The text to generate speech from.
             output_path (str): The path to save the generated audio to.
-            
+
         Returns:
             str: The path to the generated audio file.
         """
         try:
             # Generate speech
-            audio_path = self.pipeline(text, output_path)
-            return audio_path
+            generator = self.pipeline(text, voice=self.voice)
+
+            # Kokoro returns a generator with (gs, ps, audio) tuples
+            # We'll use the first generated audio segment
+            for _, _, audio in generator:
+                # Save the audio to a file
+                import soundfile as sf
+                sf.write(output_path, audio, 24000)  # Use 24kHz sample rate
+                return output_path
+
+            # If no audio was generated, raise an exception
+            raise RuntimeError("No audio was generated by the Kokoro pipeline")
         except Exception as e:
             logger.error(f"Failed to generate speech: {e}")
             raise

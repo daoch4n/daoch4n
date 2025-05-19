@@ -187,6 +187,8 @@ class TTSEngine(TTSInterface):
         # (Kokoro may support more languages in the future)
         return language
 
+    # This method is already defined above
+
     def _preprocess_text(self, text: str) -> str:
         """
         Preprocess text before sending to the TTS model.
