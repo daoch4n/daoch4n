@@ -124,6 +124,19 @@ class TTSFactory:
                 rvc_pitch=kwargs.get("rvc_pitch"),
                 output_format=kwargs.get("output_format"),
             )
+        elif engine_type == "kokoro_tts":
+            from .kokoro_tts import TTSEngine as KokoroTTSEngine
+
+            return KokoroTTSEngine(
+                voice=kwargs.get("voice", "af_heart"),
+                language=kwargs.get("language", "en"),
+                device=kwargs.get("device", "cuda" if __import__("torch").cuda.is_available() else "cpu"),
+                repo_id=kwargs.get("repo_id"),
+                cache_dir=kwargs.get("cache_dir", "cache"),
+                sample_rate=kwargs.get("sample_rate", 24000),
+                output_format=kwargs.get("output_format", "wav"),
+                emotion_mapping=kwargs.get("emotion_mapping"),
+            )
         else:
             raise ValueError(f"Unknown TTS engine type: {engine_type}")
 
