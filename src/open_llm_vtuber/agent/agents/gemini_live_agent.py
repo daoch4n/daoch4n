@@ -5,8 +5,8 @@ from typing import AsyncIterator, Optional, List, Dict, Any, Literal, Union, Cal
 from loguru import logger
 import json
 
-import google.generativeai as genai
-from google.generativeai import types as genai_types  # To avoid conflict with your types.py
+from google import genai
+from google.genai import types as genai_types  # To avoid conflict with your types.py
 
 from .agent_interface import AgentInterface
 from ..output_types import AudioOutput, Actions, DisplayText
@@ -43,8 +43,8 @@ class GeminiLiveAgent(AgentInterface):
             character_avatar: Optional[str] - Path to the character's avatar image
             live2d_model: Optional - Live2D model for expression extraction
         """
-        # Configure the Gemini API with the API key
-        genai.configure(api_key=config.api_key)
+        # Create the Gemini client with the API key
+        self.client = genai.Client(api_key=config.api_key)
         self.model_name = config.model_name
         self.character_name = character_name
         self.character_avatar = character_avatar
@@ -178,35 +178,28 @@ class GeminiLiveAgent(AgentInterface):
             session_config_copy = self.session_config.copy()
 
             try:
-                # Check if the Client class exists
-                if hasattr(genai, 'Client'):
-                    # Try to create a client
-                    client = genai.Client(api_key=genai.get_default_api_key())
-
-                    # Set up session resumption if needed
-                    if self.session_resumption_handle and hasattr(genai_types, 'SessionResumptionConfig'):
-                        logger.info(f"Attempting to resume Gemini session with handle: {self.session_resumption_handle}")
-                        session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig(
-                            handle=self.session_resumption_handle
-                        )
-                    elif hasattr(genai_types, 'SessionResumptionConfig'):
-                        # If no handle, ensure session_resumption is configured to get one
-                        session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig()
-
-                    # Connect to the Gemini Live API
-                    # The Live API uses bidiGenerateContent under the hood
-                    # Models with 'live' in the name only support this method
-                    logger.info(f"Connecting to Gemini Live API with model {self.model_name}")
-                    logger.info(f"Using bidiGenerateContent method via WebSocket connection")
-                    self.gemini_session = await client.aio.live.connect(
-                        model=self.model_name,
-                        config=session_config_copy
+                # Set up session resumption if needed
+                if self.session_resumption_handle:
+                    logger.info(f"Attempting to resume Gemini session with handle: {self.session_resumption_handle}")
+                    session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig(
+                        handle=self.session_resumption_handle
                     )
-
-                    logger.info("Connected to Gemini Live API successfully.")
-                    self.is_interrupted = False  # Reset interruption flag on new session
                 else:
-                    raise ImportError("Gemini Client class not available. Make sure you have the latest version of the Gemini SDK.")
+                    # If no handle, ensure session_resumption is configured to get one
+                    session_config_copy["session_resumption"] = genai_types.SessionResumptionConfig()
+
+                # Connect to the Gemini Live API
+                # The Live API uses bidiGenerateContent under the hood
+                # Models with 'live' in the name only support this method
+                logger.info(f"Connecting to Gemini Live API with model {self.model_name}")
+                logger.info(f"Using bidiGenerateContent method via WebSocket connection")
+                self.gemini_session = await self.client.aio.live.connect(
+                    model=self.model_name,
+                    config=session_config_copy
+                )
+
+                logger.info("Connected to Gemini Live API successfully.")
+                self.is_interrupted = False  # Reset interruption flag on new session
             except Exception as e:
                 error_msg = str(e)
                 logger.error(f"Failed to connect to Gemini Live API: {error_msg}")
@@ -545,7 +538,7 @@ class GeminiLiveAgent(AgentInterface):
 
                 # Send the audio chunk
                 await self.gemini_session.send_realtime_input(
-                    audio=genai_types.Blob(data=audio_chunk, mime_type="audio/pcm;rate=16000")
+                    audio={"data": audio_chunk, "mime_type": "audio/pcm;rate=16000"}
                 )
                 self.active_audio_stream = True
             except Exception as e:
