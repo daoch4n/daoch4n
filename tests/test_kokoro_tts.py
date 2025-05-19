@@ -57,11 +57,29 @@ def test_kokoro_tts(config_path=None, text=None, output_path=None, play_audio=Tr
     if config_path is None:
         config_path = os.path.join(
             os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "docs/conf/kokoro_tts_venv.yaml"
+            "conf.yaml"
         )
 
     config = load_config(config_path)
-    tts_config = config.get("TTS_CONFIG", {})
+
+    # Extract the TTS configuration from the conf.yaml file
+    tts_config = {}
+    if "tts_config" in config and "kokoro_tts" in config["tts_config"]:
+        # Extract the Kokoro TTS configuration
+        kokoro_config = config["tts_config"]["kokoro_tts"]
+        tts_config = {
+            "TTS_ENGINE": "kokoro_tts",
+            "TTS_VOICE": kokoro_config.get("voice"),
+            "TTS_LANGUAGE": kokoro_config.get("language"),
+            "TTS_DEVICE": kokoro_config.get("device"),
+            "TTS_CACHE_DIR": kokoro_config.get("cache_dir"),
+            "TTS_SAMPLE_RATE": kokoro_config.get("sample_rate"),
+            "TTS_OUTPUT_FORMAT": kokoro_config.get("output_format"),
+            "TTS_EMOTION_MAPPING": kokoro_config.get("emotion_mapping"),
+        }
+    else:
+        # Fallback to the old format
+        tts_config = config.get("TTS_CONFIG", {})
 
     # Create the TTS engine
     kwargs = {
@@ -119,29 +137,15 @@ def test_kokoro_tts(config_path=None, text=None, output_path=None, play_audio=Tr
 def list_available_voices():
     """List all available voices in the Kokoro model."""
     print("Available voices in Kokoro-82M model:")
-    print("- af_heart (default)")
-    print("- en_us_001")
-    print("- en_us_002")
-    print("- en_us_003")
-    print("- en_us_004")
-    print("- en_us_005")
-    print("- en_us_006")
-    print("- en_us_007")
-    print("- en_us_008")
-    print("- jf_alpha")
-    print("- jf_gongitsune")
-    print("- jf_nezumi")
-    print("- jf_tebukuro")
-    print("- zh_001")
-    print("- zh_002")
-    print("- zh_003")
-    print("- zh_004")
-    print("- zh_005")
-    print("- zh_006")
-    print("- zh_007")
-    print("- zh_008")
-    print("- zh_009")
-    print("- zh_010")
+    print("\nJapanese Female Voices (Recommended for Daoko):")
+    print("- jf_alpha (Japanese female voice - recommended for Daoko)")
+    print("- jf_gongitsune (Japanese female voice)")
+    print("- jf_nezumi (Japanese female voice)")
+    print("- jf_tebukuro (Japanese female voice)")
+    print("\nOther Voices:")
+    print("- af_heart (African female voice)")
+    print("- en_us_001 to en_us_008 (English US voices)")
+    print("- zh_001 to zh_010 (Chinese voices)")
     print("\nFor more voices, check the Kokoro-82M documentation.")
 
 
@@ -178,14 +182,17 @@ if __name__ == "__main__":
         if not config_path:
             config_path = os.path.join(
                 os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "docs/conf/kokoro_tts_venv.yaml"
+                "conf.yaml"
             )
 
         # Load the configuration
         custom_config = load_config(config_path)
 
         # Update the voice in the configuration
-        if "TTS_CONFIG" in custom_config:
+        if "tts_config" in custom_config and "kokoro_tts" in custom_config["tts_config"]:
+            custom_config["tts_config"]["kokoro_tts"]["voice"] = voice
+        elif "TTS_CONFIG" in custom_config:
+            # Fallback to the old format
             custom_config["TTS_CONFIG"]["TTS_VOICE"] = voice
 
     # Run the test with the custom configuration
