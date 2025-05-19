@@ -103,26 +103,15 @@ fi
 # Install MeCab and fugashi for Japanese text processing
 if ! is_package_installed "fugashi"; then
     log "Installing MeCab and fugashi for Japanese text processing..."
-    # Install MeCab system dependencies
-    sudo apt-get update && sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8
-
-    # Create MeCab configuration directory if it doesn't exist
-    sudo mkdir -p /usr/local/etc
-
-    # Create a basic MeCab configuration file if it doesn't exist
-    if [ ! -f "/usr/local/etc/mecabrc" ]; then
-        log "Creating MeCab configuration file..."
-        echo "dicdir = /var/lib/mecab/dic/ipadic-utf8" | sudo tee /usr/local/etc/mecabrc
-    fi
-
-    # Install fugashi with MeCab dictionary
-    python -m pip install fugashi[unidic-lite]
-
-    # Install unidic-lite for Japanese text processing
-    python -m pip install unidic-lite
+    # Run the setup_mecab.sh script
+    ./setup_mecab.sh
 else
     log "fugashi is already installed, skipping."
 fi
+
+# Patch misaki.cutlet to use GenericTagger
+log "Patching misaki.cutlet to use GenericTagger..."
+python patch_misaki.py
 
 # Install jaconv for Japanese text conversion
 if ! is_package_installed "jaconv"; then
