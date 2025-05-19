@@ -55,15 +55,33 @@ The emotion mapping is defined in the configuration file and can be customized a
 
 Different emotions affect speech parameters in the following ways:
 
-- **Joy/Happiness**: Higher pitch, slightly faster speech
-- **Sadness**: Lower pitch, slightly slower speech
-- **Anger**: Slightly lower pitch
-- **Fear**: Lower pitch
-- **Surprise**: Higher pitch
-- **Disgust**: Slightly lower pitch
+- **Joy/Happiness**: Higher pitch (+2 semitones at maximum intensity), slightly faster speech
+- **Sadness**: Lower pitch (-2 semitones at maximum intensity), slightly slower speech
+- **Anger**: Slightly lower pitch (-1 semitone at maximum intensity)
+- **Fear**: Higher pitch (+3 semitones at maximum intensity)
+- **Surprise**: Higher pitch (+4 semitones at maximum intensity)
+- **Disgust**: Slightly lower pitch (-1 semitone at maximum intensity)
 - **Neutral**: Default pitch and speed
 
-The intensity of the emotion (e.g., `[joy:0.8]` vs `[joy:0.3]`) affects how much these parameters are adjusted. Higher intensity values result in more pronounced adjustments.
+#### RVC Pitch Adjustment
+
+The pitch adjustment in RVC is measured in semitones (half-steps in musical terms):
+
+- **+12 semitones**: Raises the pitch by one octave (often used to convert a male voice to a female-sounding voice)
+- **-12 semitones**: Lowers the pitch by one octave (often used to convert a female voice to a male-sounding voice)
+- **0 semitones**: Keeps the pitch unchanged (suitable for same-gender conversions)
+
+For emotional speech, we use subtle pitch adjustments (between -2 and +4 semitones) to maintain Daoko's natural voice characteristics while still conveying emotional variations.
+
+#### Emotion Intensity
+
+The intensity of the emotion (e.g., `[joy:0.8]` vs `[joy:0.3]`) affects how much these parameters are adjusted:
+
+- Intensities below 0.3 don't trigger pitch adjustments
+- Intensities from 0.3 to 1.0 are mapped to proportional pitch adjustments
+- Higher intensity values result in more pronounced adjustments
+
+For example, `[joy:1.0]` would apply the full +2 semitone adjustment, while `[joy:0.65]` would apply a +1 semitone adjustment (approximately).
 
 ## Testing
 

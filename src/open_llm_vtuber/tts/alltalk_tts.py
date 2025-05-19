@@ -163,12 +163,20 @@ class TTSEngine(TTSInterface):
         """
         Get appropriate pitch adjustment based on emotion and intensity.
 
+        RVC pitch adjustment is measured in semitones:
+        - +12 semitones: raises pitch by one octave (male to female voice)
+        - -12 semitones: lowers pitch by one octave (female to male voice)
+        - 0 semitones: keeps pitch unchanged
+
+        We'll use subtle adjustments to maintain Daoko's natural voice characteristics
+        while still conveying emotional variations.
+
         Args:
             emotion: The emotion style
             intensity: The emotion intensity (0.0 to 1.0)
 
         Returns:
-            Pitch adjustment for AllTalk TTS
+            Pitch adjustment for AllTalk TTS (in semitones)
         """
         # Default pitch adjustment is the configured pitch
         base_pitch = self.rvc_pitch
@@ -180,19 +188,43 @@ class TTSEngine(TTSInterface):
         # Scale the effect based on intensity (0.3 to 1.0 mapped to 0.0 to 1.0)
         scaled_intensity = (intensity - 0.3) / 0.7
 
-        # Apply emotion-specific pitch adjustments
+        # Apply emotion-specific pitch adjustments (keeping them subtle)
         if emotion in ["happy", "joy", "excited"]:
-            # Happy/excited speech has higher pitch
-            return base_pitch + int(2 * scaled_intensity)
-        elif emotion in ["sad", "depressed", "fearful"]:
-            # Sad speech has lower pitch
-            return base_pitch - int(2 * scaled_intensity)
-        elif emotion in ["angry", "disgusted"]:
-            # Angry speech can have slightly lower pitch
-            return base_pitch - int(1 * scaled_intensity)
+            # Happy/excited speech has slightly higher pitch
+            # Maximum +2 semitones for full intensity
+            pitch_shift = 2 * scaled_intensity
+            return base_pitch + int(pitch_shift)
+
+        elif emotion in ["sad", "depressed"]:
+            # Sad speech has slightly lower pitch
+            # Maximum -2 semitones for full intensity
+            pitch_shift = 2 * scaled_intensity
+            return base_pitch - int(pitch_shift)
+
+        elif emotion in ["fearful"]:
+            # Fearful speech has higher pitch with slight trembling
+            # Maximum +3 semitones for full intensity
+            pitch_shift = 3 * scaled_intensity
+            return base_pitch + int(pitch_shift)
+
+        elif emotion in ["angry"]:
+            # Angry speech has slightly lower pitch with more force
+            # Maximum -1 semitone for full intensity
+            pitch_shift = 1 * scaled_intensity
+            return base_pitch - int(pitch_shift)
+
+        elif emotion in ["disgusted"]:
+            # Disgusted speech has slightly lower pitch
+            # Maximum -1 semitone for full intensity
+            pitch_shift = 1 * scaled_intensity
+            return base_pitch - int(pitch_shift)
+
         elif emotion in ["surprised"]:
             # Surprised speech has higher pitch
-            return base_pitch + int(3 * scaled_intensity)
+            # Maximum +4 semitones for full intensity
+            pitch_shift = 4 * scaled_intensity
+            return base_pitch + int(pitch_shift)
+
         else:
             # Neutral or unknown emotions use base pitch
             return base_pitch
