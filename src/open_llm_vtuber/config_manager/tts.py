@@ -337,6 +337,48 @@ class AllTalkTTSConfig(I18nMixin):
     }
 
 
+class KokoroTTSConfig(I18nMixin):
+    """Configuration for Kokoro TTS."""
+
+    voice: str = Field("af_heart", alias="voice")
+    language: str = Field("en", alias="language")
+    device: str = Field("cpu", alias="device")
+    repo_id: Optional[str] = Field(None, alias="repo_id")
+    cache_dir: str = Field("cache", alias="cache_dir")
+    sample_rate: int = Field(24000, alias="sample_rate")
+    output_format: str = Field("wav", alias="output_format")
+    emotion_mapping: Optional[Dict[str, str]] = Field(None, alias="emotion_mapping")
+
+    DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
+        "voice": Description(
+            en="Voice name to use for Kokoro TTS", zh="Kokoro TTS 使用的语音名称"
+        ),
+        "language": Description(
+            en="Language code (e.g., en, zh)", zh="语言代码（如 en、zh）"
+        ),
+        "device": Description(
+            en="Device to use (cuda, cpu)", zh="使用的设备（cuda、cpu）"
+        ),
+        "repo_id": Description(
+            en="Repository ID for custom Kokoro model (optional)",
+            zh="自定义 Kokoro 模型的仓库 ID（可选）"
+        ),
+        "cache_dir": Description(
+            en="Directory to store generated audio files", zh="存储生成的音频文件的目录"
+        ),
+        "sample_rate": Description(
+            en="Sample rate for the generated audio", zh="生成的音频的采样率"
+        ),
+        "output_format": Description(
+            en="Output audio format (wav, mp3, etc.)", zh="输出音频格式（wav、mp3 等）"
+        ),
+        "emotion_mapping": Description(
+            en="Mapping from emotion tags to Kokoro voice styles",
+            zh="从情感标签到 Kokoro 语音风格的映射"
+        ),
+    }
+
+
 class TTSConfig(I18nMixin):
     """Configuration for Text-to-Speech."""
 
@@ -353,6 +395,7 @@ class TTSConfig(I18nMixin):
         "fish_api_tts",
         "sherpa_onnx_tts",
         "alltalk_tts",
+        "kokoro_tts",
     ] = Field(..., alias="tts_model")
 
     azure_tts: Optional[AzureTTSConfig] = Field(None, alias="azure_tts")
@@ -369,6 +412,7 @@ class TTSConfig(I18nMixin):
         None, alias="sherpa_onnx_tts"
     )
     alltalk_tts: Optional[AllTalkTTSConfig] = Field(None, alias="alltalk_tts")
+    kokoro_tts: Optional[KokoroTTSConfig] = Field(None, alias="kokoro_tts")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "tts_model": Description(
@@ -395,10 +439,16 @@ class TTSConfig(I18nMixin):
         "sherpa_onnx_tts": Description(
             en="Configuration for Sherpa Onnx TTS", zh="Sherpa Onnx TTS 配置"
         ),
+        "alltalk_tts": Description(
+            en="Configuration for AllTalk TTS", zh="AllTalk TTS 配置"
+        ),
+        "kokoro_tts": Description(
+            en="Configuration for Kokoro TTS", zh="Kokoro TTS 配置"
+        ),
     }
 
     @model_validator(mode="after")
-    def check_tts_config(cls, values: "TTSConfig", _info: ValidationInfo):
+    def check_tts_config(cls, values: "TTSConfig", _: ValidationInfo):
         tts_model = values.tts_model
 
         # Only validate the selected TTS model
@@ -426,5 +476,7 @@ class TTSConfig(I18nMixin):
             values.sherpa_onnx_tts.model_validate(values.sherpa_onnx_tts.model_dump())
         elif tts_model == "alltalk_tts" and values.alltalk_tts is not None:
             values.alltalk_tts.model_validate(values.alltalk_tts.model_dump())
+        elif tts_model == "kokoro_tts" and values.kokoro_tts is not None:
+            values.kokoro_tts.model_validate(values.kokoro_tts.model_dump())
 
         return values
