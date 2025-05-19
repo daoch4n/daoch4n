@@ -189,6 +189,13 @@ if __name__ == "__main__":
         # Load the configuration
         custom_config = load_config(config_path)
 
+        # Print debug information
+        print(f"Command line arguments:")
+        print(f"  Voice: {voice}")
+        print(f"  RVC Enabled: {rvc_enabled}")
+        print(f"  RVC Model: {rvc_model}")
+        print(f"  RVC Pitch: {rvc_pitch}")
+
         # Update the parameters in the configuration
         if "tts_config" in custom_config and "alltalk_tts" in custom_config["tts_config"]:
             if voice:
