@@ -4,7 +4,7 @@ different types of agents.
 """
 
 from pydantic import BaseModel, Field
-from typing import Dict, ClassVar, Optional, Literal
+from typing import Dict, ClassVar, Optional, Literal, List, Any
 from .i18n import I18nMixin, Description
 from .stateless_llm import StatelessLLMConfigs
 
@@ -132,6 +132,120 @@ class HumeAIConfig(I18nMixin, BaseModel):
     }
 
 
+class GeminiLiveConfig(I18nMixin, BaseModel):
+    """Configuration for the Gemini Live agent."""
+
+    api_key: str = Field(..., alias="api_key")
+    model_name: str = Field("gemini-2.0-flash-live-001", alias="model_name")
+    language_code: str = Field("en-US", alias="language_code")
+    voice_name: Optional[str] = Field("Kore", alias="voice_name")
+    system_instruction: Optional[str] = Field(None, alias="system_instruction")
+    start_of_speech_sensitivity: Optional[Literal[
+        "START_SENSITIVITY_UNSPECIFIED",
+        "START_SENSITIVITY_LOW",
+        "START_SENSITIVITY_MEDIUM",
+        "START_SENSITIVITY_HIGH"
+    ]] = Field(None, alias="start_of_speech_sensitivity")
+    end_of_speech_sensitivity: Optional[Literal[
+        "END_SENSITIVITY_UNSPECIFIED",
+        "END_SENSITIVITY_LOW",
+        "END_SENSITIVITY_MEDIUM",
+        "END_SENSITIVITY_HIGH"
+    ]] = Field(None, alias="end_of_speech_sensitivity")
+    prefix_padding_ms: Optional[int] = Field(None, alias="prefix_padding_ms")
+    silence_duration_ms: Optional[int] = Field(None, alias="silence_duration_ms")
+
+    # Tool configurations
+    enable_function_calling: bool = Field(False, alias="enable_function_calling")
+    function_declarations: Optional[List[Dict[str, Any]]] = Field(None, alias="function_declarations")
+    enable_code_execution: bool = Field(False, alias="enable_code_execution")
+    enable_google_search: bool = Field(False, alias="enable_google_search")
+
+    # Context window compression
+    enable_context_compression: bool = Field(True, alias="enable_context_compression")
+    compression_window_size: int = Field(10, alias="compression_window_size")
+    compression_token_threshold: int = Field(4000, alias="compression_token_threshold")
+
+    # Audio transcription
+    enable_input_audio_transcription: bool = Field(True, alias="enable_input_audio_transcription")
+
+    # Manual VAD control
+    disable_automatic_vad: bool = Field(False, alias="disable_automatic_vad")
+
+    DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
+        "api_key": Description(
+            en="Gemini API Key", zh="Gemini API 密钥"
+        ),
+        "model_name": Description(
+            en="Gemini Live Model Name", zh="Gemini Live 模型名称"
+        ),
+        "language_code": Description(
+            en="Language code for speech (e.g., en-US, ja-JP)",
+            zh="语音语言代码 (例如 en-US, ja-JP)"
+        ),
+        "voice_name": Description(
+            en="Gemini voice name (e.g., Puck, Kore)",
+            zh="Gemini 语音名称 (例如 Puck, Kore)"
+        ),
+        "system_instruction": Description(
+            en="System instruction/persona for Gemini",
+            zh="给 Gemini 的系统指令/角色设定"
+        ),
+        "start_of_speech_sensitivity": Description(
+            en="VAD start of speech sensitivity",
+            zh="VAD 语音开始敏感度"
+        ),
+        "end_of_speech_sensitivity": Description(
+            en="VAD end of speech sensitivity",
+            zh="VAD 语音结束敏感度"
+        ),
+        "prefix_padding_ms": Description(
+            en="VAD prefix padding in milliseconds",
+            zh="VAD 前缀填充毫秒数"
+        ),
+        "silence_duration_ms": Description(
+            en="VAD silence duration in milliseconds",
+            zh="VAD 静音持续毫秒数"
+        ),
+        "enable_function_calling": Description(
+            en="Enable function calling capability",
+            zh="启用函数调用功能"
+        ),
+        "function_declarations": Description(
+            en="Function declarations for function calling",
+            zh="函数调用的函数声明"
+        ),
+        "enable_code_execution": Description(
+            en="Enable code execution capability",
+            zh="启用代码执行功能"
+        ),
+        "enable_google_search": Description(
+            en="Enable Google Search capability",
+            zh="启用Google搜索功能"
+        ),
+        "enable_context_compression": Description(
+            en="Enable context window compression for longer sessions",
+            zh="启用上下文窗口压缩以支持更长的对话会话"
+        ),
+        "compression_window_size": Description(
+            en="Number of turns to include in the sliding window for compression",
+            zh="压缩滑动窗口中包含的回合数"
+        ),
+        "compression_token_threshold": Description(
+            en="Token threshold that triggers compression",
+            zh="触发压缩的令牌阈值"
+        ),
+        "enable_input_audio_transcription": Description(
+            en="Enable transcription of audio input",
+            zh="启用输入音频的转录"
+        ),
+        "disable_automatic_vad": Description(
+            en="Disable automatic VAD and use manual activity detection",
+            zh="禁用自动VAD并使用手动活动检测"
+        ),
+    }
+
+
 class AgentSettings(I18nMixin, BaseModel):
     """Settings for different types of agents."""
 
@@ -140,6 +254,7 @@ class AgentSettings(I18nMixin, BaseModel):
     )
     mem0_agent: Optional[Mem0Config] = Field(None, alias="mem0_agent")
     hume_ai_agent: Optional[HumeAIConfig] = Field(None, alias="hume_ai_agent")
+    gemini_live_agent: Optional[GeminiLiveConfig] = Field(None, alias="gemini_live_agent")
 
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "basic_memory_agent": Description(
@@ -149,6 +264,9 @@ class AgentSettings(I18nMixin, BaseModel):
         "hume_ai_agent": Description(
             en="Configuration for Hume AI agent", zh="Hume AI 代理配置"
         ),
+        "gemini_live_agent": Description(
+            en="Configuration for Gemini Live agent", zh="Gemini Live 代理配置"
+        ),
     }
 
 
@@ -156,7 +274,7 @@ class AgentConfig(I18nMixin, BaseModel):
     """This class contains all of the configurations related to agent."""
 
     conversation_agent_choice: Literal[
-        "basic_memory_agent", "mem0_agent", "hume_ai_agent"
+        "basic_memory_agent", "mem0_agent", "hume_ai_agent", "gemini_live_agent"
     ] = Field(..., alias="conversation_agent_choice")
     agent_settings: AgentSettings = Field(..., alias="agent_settings")
     llm_configs: StatelessLLMConfigs = Field(..., alias="llm_configs")

@@ -125,19 +125,7 @@ class TTSFactory:
                 output_format=kwargs.get("output_format"),
                 emotion_mapping=kwargs.get("emotion_mapping"),
             )
-        elif engine_type == "kokoro_tts":
-            from .kokoro_tts import TTSEngine as KokoroTTSEngine
-
-            return KokoroTTSEngine(
-                voice=kwargs.get("voice", "af_heart"),
-                language=kwargs.get("language", "en"),
-                device=kwargs.get("device", "cuda" if __import__("torch").cuda.is_available() else "cpu"),
-                repo_id=kwargs.get("repo_id"),
-                cache_dir=kwargs.get("cache_dir", "cache"),
-                sample_rate=kwargs.get("sample_rate", 24000),
-                output_format=kwargs.get("output_format", "wav"),
-                emotion_mapping=kwargs.get("emotion_mapping"),
-            )
+        # kokoro_tts has been removed in favor of the tts_service microservice approach
         elif engine_type == "tts_service":
             from .tts_service_client import TTSServiceClient
 

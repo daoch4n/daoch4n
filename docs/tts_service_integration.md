@@ -6,13 +6,14 @@ This document describes the integration of the TTS Service for Japanese voice sy
 
 The TTS Service is a microservice that provides Japanese text-to-speech synthesis using Kokoro TTS. It is designed to isolate the complexity of Japanese text processing and TTS generation from the main application.
 
+> **Note**: We have standardized on the microservice approach for Kokoro TTS integration, removing the direct integration option to simplify the codebase.
+
 ## Architecture
 
 The TTS Service consists of the following components:
 
-1. **TTS Service Microservice**: A Flask API server that provides a simple REST API for generating speech from text.
+1. **TTS Service**: A Flask API server that provides a simple REST API for generating speech from text.
 2. **TTS Service Client**: A Python client library that communicates with the TTS Service.
-3. **Docker Container**: The TTS Service is packaged as a Docker container for easy deployment.
 
 ## Features
 
@@ -20,28 +21,13 @@ The TTS Service consists of the following components:
 - Support for multiple voices (jf_alpha, jf_gongitsune, jf_nezumi, jf_tebukuro)
 - Emotion support through text tags (e.g., [joy:0.8])
 - Simple REST API
+- Configurable sample rate and output format
+- Improved phoneme processing with MeCab integration
+- Robust error handling and fallback mechanisms
+- Configuration management via REST API
+- Simple start/stop scripts for service management
 
 ## Installation
-
-### Using Docker (Recommended)
-
-1. Start the TTS Service using the provided script:
-
-```bash
-./start_tts_service.sh
-```
-
-2. The service will be available at http://localhost:5000
-
-3. To stop the service:
-
-```bash
-./stop_tts_service.sh
-```
-
-### Manual Installation
-
-If you prefer to run the TTS Service without Docker, you can follow these steps:
 
 1. Install system dependencies:
 
@@ -63,11 +49,22 @@ cd tts_service
 pip install -r requirements.txt
 ```
 
-4. Run the service:
+   > **Note**: Make sure you have compatible versions of numpy, scipy, and torch installed. The TTS service requires numpy==1.22.3, scipy==1.10.1, and torch==2.0.1.
+
+4. Start the TTS Service using the provided script:
 
 ```bash
 cd tts_service
-python app.py
+./start_service.sh
+```
+
+5. The service will be available at http://localhost:5000
+
+6. To stop the service:
+
+```bash
+cd tts_service
+./stop_service.sh
 ```
 
 ## Configuration
@@ -77,7 +74,7 @@ The TTS Service is configured in the `conf.yaml` file:
 ```yaml
 tts_config:
   tts_model: 'tts_service'
-  
+
   # TTS Service configuration
   tts_service:
     base_url: "http://localhost:5000"  # URL of the TTS Service
@@ -98,10 +95,31 @@ if client.health_check():
     # Get available voices
     voices = client.get_available_voices()
     print(f"Available voices: {voices}")
-    
+
+    # Get current configuration
+    config = client.get_config()
+    print(f"Current configuration: {config}")
+
+    # Update configuration
+    new_config = {
+        "sample_rate": 24000,
+        "output_format": "wav",
+        "emotion_mapping": {
+            "joy": 1.2,
+            "sadness": 0.8,
+            "anger": 1.1,
+            "fear": 0.9,
+            "surprise": 1.3,
+            "disgust": 0.85,
+            "neutral": 1.0,
+            "smirk": 1.1
+        }
+    }
+    client.update_config(new_config)
+
     # Generate speech
     output_path = client.generate_speech(
-        text="こんにちは、私はダオコです。[joy:0.8]",
+        text="こんにちは、私はダオコです。[joy:0.8]よろしくお願いします！",
         voice="jf_alpha"
     )
     print(f"Generated audio file: {output_path}")
@@ -159,6 +177,81 @@ Response:
 }
 ```
 
+### Get Configuration
+
+```
+GET /config
+```
+
+Response:
+
+```json
+{
+  "device": "cpu",
+  "sample_rate": 24000,
+  "output_format": "wav",
+  "emotion_mapping": {
+    "joy": 1.2,
+    "sadness": 0.8,
+    "anger": 1.1,
+    "fear": 0.9,
+    "surprise": 1.3,
+    "disgust": 1.0,
+    "neutral": 1.0,
+    "smirk": 1.1
+  }
+}
+```
+
+### Update Configuration
+
+```
+POST /config
+```
+
+Request body:
+
+```json
+{
+  "sample_rate": 24000,
+  "output_format": "wav",
+  "emotion_mapping": {
+    "joy": 1.2,
+    "sadness": 0.8,
+    "anger": 1.1,
+    "fear": 0.9,
+    "surprise": 1.3,
+    "disgust": 0.85,
+    "neutral": 1.0,
+    "smirk": 1.1
+  }
+}
+```
+
+Response:
+
+```json
+{
+  "status": "ok",
+  "message": "Configuration updated successfully",
+  "config": {
+    "device": "cpu",
+    "sample_rate": 24000,
+    "output_format": "wav",
+    "emotion_mapping": {
+      "joy": 1.2,
+      "sadness": 0.8,
+      "anger": 1.1,
+      "fear": 0.9,
+      "surprise": 1.3,
+      "disgust": 0.85,
+      "neutral": 1.0,
+      "smirk": 1.1
+    }
+  }
+}
+```
+
 ### Health Check
 
 ```
@@ -195,22 +288,50 @@ The number after the colon is the intensity of the emotion (0.0 to 1.0).
 
 ## Troubleshooting
 
-### Docker Issues
-
-If you encounter issues with Docker, make sure Docker and Docker Compose are installed and running:
-
-```bash
-docker --version
-docker-compose --version
-docker ps
-```
-
 ### TTS Service Issues
 
 If you encounter issues with the TTS Service, check the logs:
 
 ```bash
-docker-compose -f tts_service/docker-compose.yml logs
+cd tts_service
+cat tts_service.log
+```
+
+You can also check if the service is running:
+
+```bash
+curl http://localhost:5000/health
+```
+
+If the service is not responding, you can restart it:
+
+```bash
+cd tts_service
+./stop_service.sh
+./start_service.sh
+```
+
+### Dependency Issues
+
+If you encounter issues with dependencies, make sure you have the correct versions installed:
+
+```bash
+pip install numpy==1.22.3 scipy==1.10.1 torch==2.0.1
+```
+
+Common dependency issues include:
+
+- **NumPy version conflicts**: The TTS service requires numpy==1.22.3
+- **SciPy version conflicts**: The TTS service requires scipy==1.10.1
+- **PyTorch version conflicts**: The TTS service requires torch==2.0.1
+
+You may need to create a virtual environment to isolate the dependencies:
+
+```bash
+python -m venv tts_env
+source tts_env/bin/activate
+cd tts_service
+pip install -r requirements.txt
 ```
 
 ### MeCab Issues

@@ -1,12 +1,13 @@
 import asyncio
 import io
 import wave
-from typing import AsyncIterator, Optional, List, Dict, Any, Literal
+from typing import AsyncIterator, Optional, List, Dict, Any, Literal, Union, Callable
 from loguru import logger
 import numpy as np
+import json
 
-from google import genai
-from google.genai import types as genai_types  # To avoid conflict with your types.py
+import google.generativeai as genai
+from google.generativeai import types as genai_types  # To avoid conflict with your types.py
 
 from .agent_interface import AgentInterface
 from ..output_types import AudioOutput, Actions, DisplayText
@@ -14,17 +15,9 @@ from ..input_types import BatchInput, TextData, TextSource
 from ...config_manager.agent import GeminiLiveConfig
 from ...chat_history_manager import get_history, store_message, get_metadata, update_metadate
 
-# Define a mapping from string config to genai_types
-START_SENSITIVITY_MAP = {
-    "START_SENSITIVITY_LOW": genai_types.StartSensitivity.START_SENSITIVITY_LOW,
-    "START_SENSITIVITY_MEDIUM": genai_types.StartSensitivity.START_SENSITIVITY_MEDIUM,
-    "START_SENSITIVITY_HIGH": genai_types.StartSensitivity.START_SENSITIVITY_HIGH,
-}
-END_SENSITIVITY_MAP = {
-    "END_SENSITIVITY_LOW": genai_types.EndSensitivity.END_SENSITIVITY_LOW,
-    "END_SENSITIVITY_MEDIUM": genai_types.EndSensitivity.END_SENSITIVITY_MEDIUM,
-    "END_SENSITIVITY_HIGH": genai_types.EndSensitivity.END_SENSITIVITY_HIGH,
-}
+# Note: For VAD sensitivity, we use string values directly in the configuration
+# Valid values for start_of_speech_sensitivity: START_SENSITIVITY_LOW, START_SENSITIVITY_MEDIUM, START_SENSITIVITY_HIGH
+# Valid values for end_of_speech_sensitivity: END_SENSITIVITY_LOW, END_SENSITIVITY_MEDIUM, END_SENSITIVITY_HIGH
 
 
 class GeminiLiveAgent(AgentInterface):
@@ -44,7 +37,7 @@ class GeminiLiveAgent(AgentInterface):
     ):
         """
         Initialize the Gemini Live Agent.
-        
+
         Args:
             config: GeminiLiveConfig - Configuration for the Gemini Live agent
             character_name: str - Name of the character
@@ -66,34 +59,72 @@ class GeminiLiveAgent(AgentInterface):
                     prebuilt_voice_config=genai_types.PrebuiltVoiceConfig(voice_name=config.voice_name)
                 ) if config.voice_name else None
             ),
-            "output_audio_transcription": {}  # Get transcription of what Gemini says
+            "output_audio_transcription": {},  # Get transcription of what Gemini says
+            "input_audio_transcription": {} if config.enable_input_audio_transcription else None  # Get transcription of what user says
         }
-        
+
         # Add system instruction if provided
         if config.system_instruction:
             self.session_config["system_instruction"] = genai_types.Content(
                 parts=[genai_types.Part(text=config.system_instruction)]
             )
 
-        # VAD Configuration
-        auto_vad_config = {}
-        if config.start_of_speech_sensitivity:
-            auto_vad_config["start_of_speech_sensitivity"] = START_SENSITIVITY_MAP.get(
-                config.start_of_speech_sensitivity
-            )
-        if config.end_of_speech_sensitivity:
-            auto_vad_config["end_of_speech_sensitivity"] = END_SENSITIVITY_MAP.get(
-                config.end_of_speech_sensitivity
-            )
-        if config.prefix_padding_ms is not None:
-            auto_vad_config["prefix_padding_ms"] = config.prefix_padding_ms
-        if config.silence_duration_ms is not None:
-            auto_vad_config["silence_duration_ms"] = config.silence_duration_ms
+        # Add tool configurations if enabled
+        tools = []
 
-        if auto_vad_config:
-            self.session_config["realtime_input_config"] = {
-                "automatic_activity_detection": auto_vad_config
+        # Add function calling if enabled
+        if config.enable_function_calling and config.function_declarations:
+            tools.append({"function_declarations": config.function_declarations})
+
+        # Add code execution if enabled
+        if config.enable_code_execution:
+            tools.append({"code_execution": {}})
+
+        # Add Google Search if enabled
+        if config.enable_google_search:
+            tools.append({"google_search": {}})
+
+        # Add tools to session config if any are enabled
+        if tools:
+            self.session_config["tools"] = tools
+
+        # Add context window compression if enabled
+        if config.enable_context_compression:
+            self.session_config["context_window_compression"] = {
+                "sliding_window": {
+                    "window_size": config.compression_window_size
+                },
+                "token_threshold": config.compression_token_threshold
             }
+
+        # VAD Configuration
+        if config.disable_automatic_vad:
+            # Use manual activity detection
+            self.session_config["realtime_input_config"] = {
+                "automatic_activity_detection": {
+                    "disabled": True
+                }
+            }
+            self.using_manual_vad = True
+        else:
+            # Use automatic VAD with configuration
+            auto_vad_config = {"disabled": False}  # Explicitly set disabled to False
+            if config.start_of_speech_sensitivity:
+                # Use string values directly without trying to access enum attributes
+                auto_vad_config["start_of_speech_sensitivity"] = config.start_of_speech_sensitivity
+            if config.end_of_speech_sensitivity:
+                # Use string values directly without trying to access enum attributes
+                auto_vad_config["end_of_speech_sensitivity"] = config.end_of_speech_sensitivity
+            if config.prefix_padding_ms is not None:
+                auto_vad_config["prefix_padding_ms"] = config.prefix_padding_ms
+            if config.silence_duration_ms is not None:
+                auto_vad_config["silence_duration_ms"] = config.silence_duration_ms
+
+            if auto_vad_config:
+                self.session_config["realtime_input_config"] = {
+                    "automatic_activity_detection": auto_vad_config
+                }
+            self.using_manual_vad = False
 
         self.gemini_session: Optional[genai.LiveSession] = None
         self.current_turn_audio_buffer = bytearray()
@@ -104,6 +135,18 @@ class GeminiLiveAgent(AgentInterface):
         self.history_conf_uid: Optional[str] = None
         self.history_history_uid: Optional[str] = None
         self.session_resumption_handle: Optional[str] = None
+
+        # For tool handling
+        self.pending_tool_calls: List[Dict[str, Any]] = []
+        self.tool_handlers: Dict[str, Callable] = self._setup_tool_handlers()
+
+        # For token usage tracking
+        self.total_prompt_tokens: int = 0
+        self.total_completion_tokens: int = 0
+        self.total_tokens: int = 0
+
+        # For VAD control
+        self.using_manual_vad: bool = False
 
     async def _ensure_session(self):
         """Ensure that a Gemini Live session is active and connected."""
@@ -129,7 +172,7 @@ class GeminiLiveAgent(AgentInterface):
     def set_memory_from_history(self, conf_uid: str, history_uid: str) -> None:
         """
         Set the agent's memory from a history.
-        
+
         Args:
             conf_uid: str - Configuration UID
             history_uid: str - History UID
@@ -178,10 +221,10 @@ class GeminiLiveAgent(AgentInterface):
     async def chat(self, batch_input: BatchInput) -> AsyncIterator[AudioOutput]:
         """
         Chat with the Gemini Live agent.
-        
+
         Args:
             batch_input: BatchInput - User input data
-            
+
         Returns:
             AsyncIterator[AudioOutput] - Stream of audio outputs
         """
@@ -244,10 +287,44 @@ class GeminiLiveAgent(AgentInterface):
                         )
 
                 if response.server_content:
+                    # Handle input audio transcription if available
+                    if response.server_content.input_transcription and response.server_content.input_transcription.text:
+                        user_transcript = response.server_content.input_transcription.text
+                        logger.info(f"User audio transcription: {user_transcript}")
+
+                        # Store the transcription in history if available
+                        if self.history_conf_uid and self.history_history_uid and user_transcript:
+                            # Check if we already stored this transcript (avoid duplicates)
+                            history = get_history(self.history_conf_uid, self.history_history_uid)
+                            last_msg = history[-1] if history else None
+
+                            if not last_msg or last_msg.get("role") != "human" or last_msg.get("content") != user_transcript:
+                                store_message(
+                                    conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
+                                    role="human", content=user_transcript
+                                )
+
                     if response.server_content.interrupted:
                         logger.info("Gemini indicated generation was interrupted.")
                         self.is_interrupted = True  # Ensure we break
                         break  # Stop processing this turn
+
+                    # Handle tool calls if any
+                    if response.server_content.tool_calls:
+                        logger.info(f"Received tool calls: {response.server_content.tool_calls}")
+                        # Process tool calls in a separate task to avoid blocking the audio stream
+                        asyncio.create_task(self._process_tool_calls(response.server_content.tool_calls))
+                        # Yield a notification to the user that a tool is being used
+                        yield AudioOutput(
+                            audio_path=None,  # No audio for tool notification
+                            display_text=DisplayText(
+                                text="Using tools to help answer your question...",
+                                name=self.character_name,
+                                avatar=self.character_avatar
+                            ),
+                            transcript="Using tools to help answer your question...",
+                            actions=Actions()
+                        )
 
                     if response.server_content.model_turn and response.server_content.model_turn.parts:
                         for part in response.server_content.model_turn.parts:
@@ -287,6 +364,32 @@ class GeminiLiveAgent(AgentInterface):
                                     actions=actions
                                 )
 
+                        # Track token usage if available
+                    if response.server_content.usage_metadata:
+                        prompt_tokens = response.server_content.usage_metadata.prompt_token_count or 0
+                        completion_tokens = response.server_content.usage_metadata.candidates_token_count or 0
+                        total_tokens = response.server_content.usage_metadata.total_token_count or 0
+
+                        self.total_prompt_tokens += prompt_tokens
+                        self.total_completion_tokens += completion_tokens
+                        self.total_tokens += total_tokens
+
+                        logger.info(f"Token usage - Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
+                        logger.info(f"Cumulative token usage - Prompt: {self.total_prompt_tokens}, Completion: {self.total_completion_tokens}, Total: {self.total_tokens}")
+
+                        # Store token usage in metadata if history is enabled
+                        if self.history_conf_uid and self.history_history_uid:
+                            update_metadate(
+                                self.history_conf_uid, self.history_history_uid,
+                                {
+                                    "token_usage": {
+                                        "prompt_tokens": self.total_prompt_tokens,
+                                        "completion_tokens": self.total_completion_tokens,
+                                        "total_tokens": self.total_tokens
+                                    }
+                                }
+                            )
+
                     if response.server_content.generation_complete:
                         logger.info("Gemini indicated generation complete.")
                         if self.history_conf_uid and self.history_history_uid and accumulated_transcript:
@@ -299,9 +402,22 @@ class GeminiLiveAgent(AgentInterface):
 
                 if response.go_away:
                     logger.warning(f"Gemini session go_away received: {response.go_away.message}. Time left: {response.go_away.time_left}")
-                    if self.gemini_session:
-                        await self.gemini_session.close()
-                    self.gemini_session = None
+                    # Store the time left for potential reconnection before timeout
+                    time_left_seconds = response.go_away.time_left.seconds if response.go_away.time_left else 0
+
+                    # If we have enough time left (more than 10 seconds), try to reconnect
+                    if time_left_seconds > 10 and self.session_resumption_handle:
+                        logger.info(f"Will attempt to reconnect with session handle before timeout ({time_left_seconds}s left)")
+                        if self.gemini_session:
+                            await self.gemini_session.close()
+                        self.gemini_session = None
+                        # Force reconnection on next interaction
+                        await self._ensure_session()
+                    else:
+                        # Not enough time or no resumption handle, just close
+                        if self.gemini_session:
+                            await self.gemini_session.close()
+                        self.gemini_session = None
                     break
         except Exception as e:
             logger.error(f"Error during Gemini Live chat: {e}")
@@ -325,7 +441,7 @@ class GeminiLiveAgent(AgentInterface):
     async def stream_audio_chunk(self, audio_chunk: bytes):
         """
         Stream an audio chunk to Gemini Live.
-        
+
         Args:
             audio_chunk: bytes - Raw audio data (PCM 16-bit, 16kHz)
         """
@@ -333,6 +449,13 @@ class GeminiLiveAgent(AgentInterface):
         if self.gemini_session and not self.is_interrupted:
             try:
                 logger.debug(f"Sending audio chunk to Gemini: {len(audio_chunk)} bytes")
+
+                # If using manual VAD and this is the first chunk, send activity_start
+                if self.using_manual_vad and not self.active_audio_stream:
+                    logger.debug("Sending manual activity_start signal")
+                    await self.gemini_session.send_realtime_input(activity_start=True)
+
+                # Send the audio chunk
                 await self.gemini_session.send_realtime_input(
                     audio=genai_types.Blob(data=audio_chunk, mime_type="audio/pcm;rate=16000")
                 )
@@ -351,7 +474,15 @@ class GeminiLiveAgent(AgentInterface):
         if self.gemini_session and self.active_audio_stream and not self.is_interrupted:
             try:
                 logger.debug("Sending audio_stream_end to Gemini.")
+
+                # If using manual VAD, send activity_end before audio_stream_end
+                if self.using_manual_vad:
+                    logger.debug("Sending manual activity_end signal")
+                    await self.gemini_session.send_realtime_input(activity_end=True)
+
+                # Send audio_stream_end
                 await self.gemini_session.send_realtime_input(audio_stream_end=True)
+
                 # Also mark the user's turn as complete after audio
                 await self.gemini_session.send_client_content(turn_complete=True)
             except Exception as e:
@@ -371,7 +502,7 @@ class GeminiLiveAgent(AgentInterface):
     def handle_interrupt(self, heard_response: str) -> None:
         """
         Handle an interruption signal.
-        
+
         Args:
             heard_response: str - The response heard so far
         """
@@ -390,6 +521,124 @@ class GeminiLiveAgent(AgentInterface):
                 conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
                 role="system", content="[Interrupted by user]"
             )
+
+    def _setup_tool_handlers(self) -> Dict[str, Callable]:
+        """Set up handlers for different tool types."""
+        return {
+            "function": self._handle_function_call,
+            "code_execution": self._handle_code_execution,
+            "google_search": self._handle_google_search
+        }
+
+    async def _handle_function_call(self, function_call: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle a function call from Gemini.
+
+        Args:
+            function_call: Dict containing function call details
+
+        Returns:
+            Dict with function call response
+        """
+        function_name = function_call.get("name", "")
+        function_args = function_call.get("args", {})
+
+        logger.info(f"Function call received: {function_name} with args: {function_args}")
+
+        # This is where you would implement actual function calling logic
+        # For now, we'll return a simple response
+        response = {
+            "name": function_name,
+            "response": {
+                "content": f"Function {function_name} was called with arguments {json.dumps(function_args)}"
+            }
+        }
+
+        return response
+
+    async def _handle_code_execution(self, code_execution: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle a code execution request from Gemini.
+
+        Args:
+            code_execution: Dict containing code execution details
+
+        Returns:
+            Dict with code execution response
+        """
+        code = code_execution.get("code", "")
+        language = code_execution.get("language", "python")
+
+        logger.info(f"Code execution requested in {language}: {code[:100]}...")
+
+        # This is where you would implement actual code execution logic
+        # For now, we'll return a simple response
+        return {
+            "output": f"Code execution for {language} is not implemented yet.",
+            "error": None
+        }
+
+    async def _handle_google_search(self, search_query: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle a Google Search request from Gemini.
+
+        Args:
+            search_query: Dict containing search query details
+
+        Returns:
+            Dict with search results
+        """
+        query = search_query.get("query", "")
+
+        logger.info(f"Google Search requested for: {query}")
+
+        # This is where you would implement actual Google Search logic
+        # For now, we'll return a simple response
+        return {
+            "results": [
+                {
+                    "title": f"Search result for {query}",
+                    "url": f"https://example.com/search?q={query}",
+                    "snippet": f"This is a placeholder result for the search query: {query}"
+                }
+            ]
+        }
+
+    async def _process_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> None:
+        """Process tool calls from Gemini.
+
+        Args:
+            tool_calls: List of tool calls to process
+        """
+        if not tool_calls or not self.gemini_session:
+            return
+
+        for tool_call in tool_calls:
+            tool_type = next(iter(tool_call.keys()), None)
+            if not tool_type or tool_type not in self.tool_handlers:
+                logger.warning(f"Unknown tool type: {tool_type}")
+                continue
+
+            try:
+                # Get the handler for this tool type
+                handler = self.tool_handlers[tool_type]
+
+                # Call the handler with the tool call data
+                response = await handler(tool_call[tool_type])
+
+                # Send the response back to Gemini
+                await self.gemini_session.send_tool_response({
+                    tool_type: response
+                })
+
+                logger.info(f"Sent {tool_type} response to Gemini")
+            except Exception as e:
+                logger.error(f"Error processing {tool_type} call: {e}")
+                # Send error response if possible
+                if self.gemini_session:
+                    try:
+                        await self.gemini_session.send_tool_response({
+                            tool_type: {"error": str(e)}
+                        })
+                    except Exception as e2:
+                        logger.error(f"Error sending tool error response: {e2}")
 
     async def close_session(self):
         """Close the Gemini Live session."""
