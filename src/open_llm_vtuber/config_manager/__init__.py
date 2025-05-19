@@ -37,7 +37,8 @@ from .tts import (
     FishAPITTSConfig,
     SherpaOnnxTTSConfig,
     AllTalkTTSConfig,
-    KokoroTTSConfig,
+    TTSServiceConfig,
+    # KokoroTTSConfig has been removed in favor of the tts_service microservice approach
 )
 from .vad import (
     VADConfig,
@@ -54,6 +55,8 @@ from .agent import (
     Mem0VectorStoreConfig,
     Mem0LLMConfig,
     Mem0EmbedderConfig,
+    GeminiLiveConfig,
+    HumeAIConfig,
 )
 
 # Import utility functions
@@ -84,6 +87,8 @@ __all__ = [
     "Mem0VectorStoreConfig",
     "Mem0LLMConfig",
     "Mem0EmbedderConfig",
+    "GeminiLiveConfig",
+    "HumeAIConfig",
     # ASR related classes
     "ASRConfig",
     "AzureASRConfig",
@@ -106,7 +111,8 @@ __all__ = [
     "FishAPITTSConfig",
     "SherpaOnnxTTSConfig",
     "AllTalkTTSConfig",
-    "KokoroTTSConfig",
+    "TTSServiceConfig",
+    # "KokoroTTSConfig", # Removed in favor of the tts_service microservice approach
     # VAD related classes
     "VADConfig",
     "SileroVADConfig",
