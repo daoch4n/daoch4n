@@ -159,6 +159,12 @@ setup_kokoro() {
             uv pip install fugashi
         fi
 
+        # Install jaconv for Japanese text conversion
+        if ! is_package_installed "jaconv"; then
+            log "Installing jaconv for Japanese text conversion..."
+            uv pip install jaconv
+        fi
+
         # Install the project in development mode if needed
         if ! is_package_installed "open_llm_vtuber"; then
             log "Installing project in development mode..."
