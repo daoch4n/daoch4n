@@ -138,6 +138,12 @@ class TTSFactory:
                 output_format=kwargs.get("output_format", "wav"),
                 emotion_mapping=kwargs.get("emotion_mapping"),
             )
+        elif engine_type == "tts_service":
+            from .tts_service_client import TTSServiceClient
+
+            return TTSServiceClient(
+                base_url=kwargs.get("base_url", "http://localhost:5000"),
+            )
         else:
             raise ValueError(f"Unknown TTS engine type: {engine_type}")
 
