@@ -264,7 +264,9 @@ class GeminiLiveAgent(AgentInterface):
                 if turns:
                     logger.debug(f"Sending {len(turns)} history turns to Gemini.")
                     try:
-                        await self.gemini_session.send_client_content(turns=turns, turn_complete=False)
+                        # In the new SDK, we need to send each turn individually
+                        for turn in turns:
+                            await self.gemini_session.send_message(message=turn)
                     except Exception as e:
                         logger.warning(f"Failed to send history to Gemini: {e}")
 
@@ -320,14 +322,13 @@ class GeminiLiveAgent(AgentInterface):
 
             # Send the text input to Gemini
             if text_to_send:
-                await self.gemini_session.send_client_content(
-                    turns={"role": "user", "parts": [{"text": text_to_send}]},
-                    turn_complete=False  # Keep turn open for potential audio
+                # In the new SDK, we use send_message to send user messages
+                await self.gemini_session.send_message(
+                    message={"role": "user", "parts": [{"text": text_to_send}]}
                 )
 
-            # Mark the user's turn as complete if no audio is expected to follow immediately
-            if not self.active_audio_stream and text_to_send:  # if only text was sent
-                await self.gemini_session.send_client_content(turn_complete=True)
+            # In the new SDK, turns are automatically completed when send_message is called
+            # No need to explicitly mark the turn as complete
 
             # Receive and process responses from Gemini
             accumulated_transcript = ""
@@ -572,8 +573,8 @@ class GeminiLiveAgent(AgentInterface):
                 # Send audio_stream_end
                 await self.gemini_session.send_realtime_input(audio_stream_end=True)
 
-                # Also mark the user's turn as complete after audio
-                await self.gemini_session.send_client_content(turn_complete=True)
+                # In the new SDK, turns are automatically completed when audio_stream_end is sent
+                # No need to explicitly mark the turn as complete
             except Exception as e:
                 logger.error(f"Error sending audio_stream_end to Gemini: {e}")
             finally:
@@ -582,11 +583,9 @@ class GeminiLiveAgent(AgentInterface):
             # If there was no active audio stream, but we had text input earlier,
             # we might need to complete the turn.
             if self.gemini_session and not self.is_interrupted:
-                try:
-                    await self.gemini_session.send_client_content(turn_complete=True)
-                    logger.debug("Sent turn_complete after non-audio input.")
-                except Exception as e:
-                    logger.warning(f"Failed to send turn_complete: {e}")
+                # In the new SDK, turns are automatically completed
+                # No need to explicitly mark the turn as complete
+                logger.debug("Turn automatically completed in the new SDK.")
 
     def handle_interrupt(self, heard_response: str) -> None:
         """
