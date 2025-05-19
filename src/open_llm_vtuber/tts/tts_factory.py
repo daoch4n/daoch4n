@@ -123,6 +123,7 @@ class TTSFactory:
                 rvc_model=kwargs.get("rvc_model"),
                 rvc_pitch=kwargs.get("rvc_pitch"),
                 output_format=kwargs.get("output_format"),
+                emotion_mapping=kwargs.get("emotion_mapping"),
             )
         elif engine_type == "kokoro_tts":
             from .kokoro_tts import TTSEngine as KokoroTTSEngine
