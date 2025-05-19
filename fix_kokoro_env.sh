@@ -20,10 +20,46 @@ log "Fixing Kokoro virtual environment..."
 # Activate the virtual environment
 source .venv/kokoro-env/bin/activate
 
+# Check and fix MeCab configuration
+check_mecab_config
+
 # Function to check if a Python package is installed
 is_package_installed() {
     python -c "import $1" &> /dev/null
     return $?
+}
+
+# Function to check and fix MeCab configuration
+check_mecab_config() {
+    log "Checking MeCab configuration..."
+
+    # Check if MeCab is installed
+    if ! command -v mecab &> /dev/null; then
+        log "MeCab is not installed. Installing..."
+        sudo apt-get update && sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8
+    fi
+
+    # Check if MeCab configuration file exists
+    if [ ! -f "/usr/local/etc/mecabrc" ]; then
+        log "MeCab configuration file not found. Creating..."
+        sudo mkdir -p /usr/local/etc
+        echo "dicdir = /var/lib/mecab/dic/ipadic-utf8" | sudo tee /usr/local/etc/mecabrc
+    fi
+
+    # Test MeCab
+    if ! echo "テスト" | mecab &> /dev/null; then
+        log "MeCab test failed. Trying to fix..."
+        # Try to find the dictionary directory
+        DICT_DIR=$(find /var/lib/mecab -name "ipadic*" -type d | head -n 1)
+        if [ -n "$DICT_DIR" ]; then
+            log "Found dictionary at $DICT_DIR. Updating configuration..."
+            echo "dicdir = $DICT_DIR" | sudo tee /usr/local/etc/mecabrc
+        else
+            log "Could not find MeCab dictionary. Please install it manually."
+        fi
+    else
+        log "MeCab is working correctly."
+    fi
 }
 
 # Ensure pip is installed
@@ -69,8 +105,21 @@ if ! is_package_installed "fugashi"; then
     log "Installing MeCab and fugashi for Japanese text processing..."
     # Install MeCab system dependencies
     sudo apt-get update && sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8
+
+    # Create MeCab configuration directory if it doesn't exist
+    sudo mkdir -p /usr/local/etc
+
+    # Create a basic MeCab configuration file if it doesn't exist
+    if [ ! -f "/usr/local/etc/mecabrc" ]; then
+        log "Creating MeCab configuration file..."
+        echo "dicdir = /var/lib/mecab/dic/ipadic-utf8" | sudo tee /usr/local/etc/mecabrc
+    fi
+
     # Install fugashi with MeCab dictionary
-    python -m pip install fugashi[unidic]
+    python -m pip install fugashi[unidic-lite]
+
+    # Install unidic-lite for Japanese text processing
+    python -m pip install unidic-lite
 else
     log "fugashi is already installed, skipping."
 fi
