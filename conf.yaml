@@ -96,10 +96,11 @@ character_config:
         api_key: 'AIzaSyAJA2znNF2Xp-6vztj2bSmP-oskQSVTOvY' # Replace with your Gemini API key
         model_name: 'gemini-2.0-flash-live-001' # The Gemini 2.0 Live model to use with the new SDK
         language_code: 'ja-JP' # Language code for speech (e.g., en-US, ja-JP)
-        voice_name: 'Kore' # Gemini voice name (e.g., Puck, Charon, Kore)
-        system_instruction: "You are a cheerful and helpful VTuber assistant named
-          Daoko. Respond concisely. Express emotions using tags like [joy:0.7] or
-          [surprise:0.3] in your speech."
+        voice_name: 'Kore' # Gemini voice name (e.g. Charon, Kore)
+        system_instruction: "" # System instruction read from appropriate place then injected with character prompt from DAOKO.MD
+        # Could be unreliable on long conversations due to context window compression. 
+        # Investigate Memory Bank integration through new MCP Protocol integration instead 
+        #   for injecting relevant memories in every user prompt to maintain consistent personality in AI responses.
 
         # Voice Activity Detection settings
         start_of_speech_sensitivity: "START_SENSITIVITY_MEDIUM"
@@ -131,8 +132,6 @@ character_config:
 
         # Manual VAD control (set to true to use manual activity detection)
         disable_automatic_vad: false
-      # MemGPT Configurations: MemGPT is temporarily removed
-      ##
 
     llm_configs:
       # a configuration pool for the credentials and connection details for
