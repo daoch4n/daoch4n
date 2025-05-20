@@ -63,8 +63,9 @@ submodules/MeloTTS
 openapi_assistants.json
 openapi_memgpt.json
 
-# memory log
+# json
 mem.json
+conf.yaml
 conf.yaml.backup
 
 *.exe
