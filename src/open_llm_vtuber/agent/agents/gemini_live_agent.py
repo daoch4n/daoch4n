@@ -1,6 +1,9 @@
 import asyncio
 import io
+import re
 import wave
+import os
+import pathlib
 from typing import AsyncIterator, Optional, List, Dict, Any, Literal, Union, Callable
 from loguru import logger
 import json
@@ -49,6 +52,7 @@ class GeminiLiveAgent(AgentInterface):
         self.character_name = character_name
         self.character_avatar = character_avatar
         self.live2d_model = live2d_model
+        self.use_dual_prompt_system = config.use_dual_prompt_system
 
         # We're using native Live API mode only (no compatibility mode)
 
@@ -78,9 +82,28 @@ class GeminiLiveAgent(AgentInterface):
 
             # Add system instruction if provided
             if config.system_instruction and hasattr(genai_types, 'Content'):
+                # Read DAOKO.MD file for character information
+                daoko_md_path = pathlib.Path(os.getcwd()) / "DAOKO.MD"
+                if daoko_md_path.exists():
+                    try:
+                        with open(daoko_md_path, "r", encoding="utf-8") as f:
+                            daoko_info = f.read()
+                        logger.info("Successfully read DAOKO.MD file for character information")
+
+                        # Combine DAOKO.MD content with basic system instruction
+                        base_instruction = config.system_instruction or "You are a cheerful and helpful VTuber assistant named Daoko."
+                        modified_instruction = f"{base_instruction}\n\n# Character Information\n{daoko_info}"
+                    except Exception as e:
+                        logger.error(f"Error reading DAOKO.MD file: {e}")
+                        modified_instruction = config.system_instruction
+                else:
+                    logger.warning("DAOKO.MD file not found, using default system instruction")
+                    modified_instruction = config.system_instruction
+
                 self.session_config["system_instruction"] = genai_types.Content(
-                    parts=[genai_types.Part(text=config.system_instruction)]
+                    parts=[genai_types.Part(text=modified_instruction)]
                 )
+                logger.info("Added enhanced system instruction to not speak emotion tags")
 
             # Add tool configurations if enabled
             tools = []
@@ -217,6 +240,202 @@ class GeminiLiveAgent(AgentInterface):
                 # Raise the exception to prevent continuing with a broken session
                 raise
 
+    async def _extract_emotions_from_planning(self, user_message: str) -> str:
+        """
+        First step of the two-step approach: Ask the model to plan a response with emotion tags.
+
+        Args:
+            user_message: The user's message to respond to
+
+        Returns:
+            A response with emotion tags that will be used for facial expressions
+        """
+        if not self.gemini_session:
+            logger.error("No active Gemini session for emotion planning")
+            return ""
+
+        try:
+            logger.info("Requesting emotion-tagged planning response...")
+
+            # Create a planning prompt that asks for emotion tags
+            planning_prompt = (
+                f"The user said: \"{user_message}\"\n\n"
+                "Plan your response to the user and include emotion tags like [joy], [surprise], [sadness], etc. "
+                "to indicate your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. "
+                "This is for planning purposes only to capture your emotional state."
+            )
+
+            # Send the planning prompt
+            await self.gemini_session.send_client_content(
+                turns={"role": "user", "parts": [{"text": planning_prompt}]},
+                turn_complete=True
+            )
+
+            # Process the planning response to extract emotion tags
+            planning_response = ""
+            async for response in self.gemini_session.receive():
+                if response.server_content and response.server_content.model_turn and response.server_content.model_turn.parts:
+                    for part in response.server_content.model_turn.parts:
+                        if hasattr(part, 'text') and part.text:
+                            planning_response += part.text
+
+                if response.server_content and response.server_content.generation_complete:
+                    break
+
+            logger.info(f"Received planning response with emotion tags: {planning_response}")
+            return planning_response
+
+        except Exception as e:
+            logger.error(f"Error during emotion planning phase: {e}")
+            return ""
+
+    async def _generate_clean_response(self, user_message: str, planning_response: str) -> AsyncIterator[AudioOutput]:
+        """
+        Second step of the two-step approach: Generate a clean spoken response without emotion tags.
+
+        Args:
+            user_message: The original user message
+            planning_response: The planning response with emotion tags
+
+        Returns:
+            An async iterator of AudioOutput objects
+        """
+        if not self.gemini_session:
+            logger.error("No active Gemini session for clean response generation")
+            yield AudioOutput(
+                audio_path=None,
+                display_text=DisplayText(text="Error: Could not connect to Gemini."),
+                transcript="Error: Could not connect to Gemini.",
+                actions=Actions()
+            )
+            return
+
+        try:
+            # Extract emotion tags from planning response for facial expressions
+            actions = Actions()
+            if self.live2d_model and planning_response:
+                expression_tuples = self.live2d_model.extract_emotion(planning_response)
+                if expression_tuples:
+                    interpolated_expressions = [
+                        self.live2d_model.get_interpolated_expression(idx, intensity)
+                        for idx, intensity in expression_tuples
+                    ]
+                    actions.expressions = interpolated_expressions
+                    logger.info(f"Extracted expressions: {expression_tuples}")
+
+            # Create a clean prompt that explicitly asks for no emotion tags
+            clean_prompt = (
+                f"The user said: \"{user_message}\"\n\n"
+                "Respond naturally to the user without using or mentioning any emotion tags or square brackets. "
+                "Just give a normal conversational response as if you're speaking directly to them."
+            )
+
+            # Send the clean prompt
+            await self.gemini_session.send_client_content(
+                turns={"role": "user", "parts": [{"text": clean_prompt}]},
+                turn_complete=True
+            )
+
+            # Process the clean response and yield audio outputs
+            accumulated_transcript = ""
+            async for response in self.gemini_session.receive():
+                if self.is_interrupted:
+                    logger.info("Gemini Live: Interruption acknowledged, stopping response processing.")
+                    break
+
+                if response.server_content and response.server_content.model_turn and response.server_content.model_turn.parts:
+                    # Extract all text content from model_turn.parts
+                    model_turn_text = self._extract_text_from_parts(response.server_content.model_turn.parts)
+
+                    # Process audio parts
+                    for part in response.server_content.model_turn.parts:
+                        if part.inline_data and part.inline_data.mime_type.startswith("audio/"):
+                            audio_data = part.inline_data.data
+
+                            # Find transcript from various possible locations
+                            transcript_text = ""
+
+                            # Try various locations for transcript (same as before)
+                            if hasattr(response.server_content, 'output_transcription') and response.server_content.output_transcription:
+                                if hasattr(response.server_content.output_transcription, 'text'):
+                                    transcript_text = response.server_content.output_transcription.text
+
+                            if not transcript_text and hasattr(response, 'output_transcription') and response.output_transcription:
+                                if hasattr(response.output_transcription, 'text'):
+                                    transcript_text = response.output_transcription.text
+
+                            if not transcript_text and hasattr(response, 'text') and response.text:
+                                transcript_text = response.text
+
+                            if not transcript_text and hasattr(part, 'text') and part.text:
+                                transcript_text = part.text
+
+                            if not transcript_text and hasattr(response.server_content.model_turn, 'text') and response.server_content.model_turn.text:
+                                transcript_text = response.server_content.model_turn.text
+
+                            if not transcript_text and hasattr(response.server_content, 'transcript') and response.server_content.transcript:
+                                transcript_text = response.server_content.transcript
+
+                            if not transcript_text and model_turn_text:
+                                transcript_text = model_turn_text
+
+                            # If we found a transcript, use it
+                            if transcript_text:
+                                # For display, combine the clean transcript with emotion tags from planning
+                                # This gives us the best of both worlds - clean speech but emotional display
+                                display_transcript = transcript_text
+
+                                # Add the planning response's emotion tags to the history for future reference
+                                if self.history_conf_uid and self.history_history_uid and planning_response:
+                                    store_message(
+                                        conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
+                                        role="system", content=f"Emotion planning: {planning_response}"
+                                    )
+
+                                # Save audio to a temporary file
+                                temp_audio_path = f"cache/gemini_live_{id(audio_data)}.wav"
+                                with wave.open(temp_audio_path, "wb") as wf:
+                                    wf.setnchannels(1)  # Mono
+                                    wf.setsampwidth(2)  # 16-bit
+                                    wf.setframerate(24000)  # Gemini's output sample rate
+                                    wf.writeframes(audio_data)
+
+                                logger.debug(f"Saved audio to {temp_audio_path}")
+                                logger.debug(f"Display transcript: '{display_transcript}'")
+
+                                # For display, we'll use the clean transcript but with the actions from the planning phase
+                                yield AudioOutput(
+                                    audio_path=temp_audio_path,
+                                    display_text=DisplayText(text=display_transcript, name=self.character_name, avatar=self.character_avatar),
+                                    transcript=transcript_text,
+                                    actions=actions
+                                )
+
+                                accumulated_transcript += transcript_text
+
+                if response.server_content and response.server_content.generation_complete:
+                    logger.info("Gemini indicated generation complete.")
+                    if self.history_conf_uid and self.history_history_uid and accumulated_transcript:
+                        store_message(
+                            conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
+                            role="ai", content=accumulated_transcript,
+                            name=self.character_name, avatar=self.character_avatar
+                        )
+                    break
+
+        except Exception as e:
+            logger.error(f"Error during clean response generation: {e}")
+            yield AudioOutput(
+                audio_path=None,
+                display_text=DisplayText(
+                    text=f"Error generating response: {str(e)}",
+                    name=self.character_name,
+                    avatar=self.character_avatar
+                ),
+                transcript=f"Error generating response: {str(e)}",
+                actions=Actions()
+            )
+
     def set_memory_from_history(self, conf_uid: str, history_uid: str) -> None:
         """
         Set the agent's memory from a history.
@@ -277,7 +496,7 @@ class GeminiLiveAgent(AgentInterface):
 
     async def chat(self, batch_input: BatchInput) -> AsyncIterator[AudioOutput]:
         """
-        Chat with the Gemini Live agent.
+        Chat with the Gemini Live agent using either a single prompt or dual prompt approach.
 
         Args:
             batch_input: BatchInput - User input data
@@ -305,7 +524,7 @@ class GeminiLiveAgent(AgentInterface):
             full_text_input = " ".join([text.content for text in batch_input.texts if text.content])
             if full_text_input:
                 text_to_send = full_text_input
-                logger.debug(f"Sending text to Gemini: {text_to_send}")
+                logger.debug(f"User message: {text_to_send}")
 
                 # Store message in history if available
                 if self.history_conf_uid and self.history_history_uid:
@@ -319,185 +538,22 @@ class GeminiLiveAgent(AgentInterface):
             text_to_send = "Hello"
             logger.debug("No text input provided, using default greeting")
 
-        # Use the Live API
         try:
-            # Send the text input to Gemini
-            if text_to_send:
-                # Send the user message and mark the turn as complete
-                await self.gemini_session.send_client_content(
-                    turns={"role": "user", "parts": [{"text": text_to_send}]},
-                    turn_complete=True
-                )
+            # Choose between dual prompt system and single prompt approach based on configuration
+            if self.use_dual_prompt_system:
+                logger.info("Using dual prompt system for emotion tag handling")
+                # STEP 1: Get a planning response with emotion tags
+                planning_response = await self._extract_emotions_from_planning(text_to_send)
 
-            # Receive and process responses from Gemini
-            accumulated_transcript = ""
-            try:
-                async for response in self.gemini_session.receive():
-                    if self.is_interrupted:
-                        logger.info("Gemini Live: Interruption acknowledged, stopping response processing.")
-                        break
+                # STEP 2: Generate a clean spoken response without emotion tags
+                async for audio_output in self._generate_clean_response(text_to_send, planning_response):
+                    yield audio_output
+            else:
+                logger.info("Using single prompt approach for emotion tag handling")
+                # Use the single prompt approach
+                async for audio_output in self._extract_emotions_and_generate_response(text_to_send):
+                    yield audio_output
 
-                    if response.session_resumption_update and response.session_resumption_update.new_handle:
-                        self.session_resumption_handle = response.session_resumption_update.new_handle
-                        logger.info(f"Received new Gemini session handle: {self.session_resumption_handle}")
-                        if self.history_conf_uid and self.history_history_uid:
-                            update_metadate(
-                                self.history_conf_uid, self.history_history_uid,
-                                {"resume_id": self.session_resumption_handle, "agent_type": self.AGENT_TYPE}
-                            )
-
-                    if response.server_content:
-                        # Handle input audio transcription if available
-                        if response.server_content.input_transcription and response.server_content.input_transcription.text:
-                            user_transcript = response.server_content.input_transcription.text
-                            logger.info(f"User audio transcription: {user_transcript}")
-
-                            # Store the transcription in history if available
-                            if self.history_conf_uid and self.history_history_uid and user_transcript:
-                                # Check if we already stored this transcript (avoid duplicates)
-                                history = get_history(self.history_conf_uid, self.history_history_uid)
-                                last_msg = history[-1] if history else None
-
-                                if not last_msg or last_msg.get("role") != "human" or last_msg.get("content") != user_transcript:
-                                    store_message(
-                                        conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
-                                        role="human", content=user_transcript
-                                    )
-
-                        if response.server_content.interrupted:
-                            logger.info("Gemini indicated generation was interrupted.")
-                            self.is_interrupted = True  # Ensure we break
-                            break  # Stop processing this turn
-
-                        # Handle tool calls if any
-                        if response.server_content.tool_calls:
-                            logger.info(f"Received tool calls: {response.server_content.tool_calls}")
-                            # Process tool calls in a separate task to avoid blocking the audio stream
-                            asyncio.create_task(self._process_tool_calls(response.server_content.tool_calls))
-                            # Yield a notification to the user that a tool is being used
-                            yield AudioOutput(
-                                audio_path=None,  # No audio for tool notification
-                                display_text=DisplayText(
-                                    text="Using tools to help answer your question...",
-                                    name=self.character_name,
-                                    avatar=self.character_avatar
-                                ),
-                                transcript="Using tools to help answer your question...",
-                                actions=Actions()
-                            )
-
-                        if response.server_content.model_turn and response.server_content.model_turn.parts:
-                            for part in response.server_content.model_turn.parts:
-                                if part.inline_data and part.inline_data.mime_type.startswith("audio/"):
-                                    audio_data = part.inline_data.data
-                                    # Assuming output_audio_transcription is enabled
-                                    transcript_text = ""
-                                    if response.server_content.output_transcription:
-                                        transcript_text = response.server_content.output_transcription.text
-                                        accumulated_transcript += transcript_text  # Only append if new
-                                        logger.debug(f"Gemini audio transcript part: {transcript_text}")
-
-                                    # Extract expressions from transcript if Live2D model is available
-                                    actions = Actions()
-                                    if self.live2d_model and transcript_text:
-                                        expression_tuples = self.live2d_model.extract_emotion(transcript_text)
-                                        if expression_tuples:
-                                            interpolated_expressions = [
-                                                self.live2d_model.get_interpolated_expression(idx, intensity)
-                                                for idx, intensity in expression_tuples
-                                            ]
-                                            actions.expressions = interpolated_expressions
-
-                                    # Save audio to a temporary file
-                                    temp_audio_path = f"cache/gemini_live_{id(audio_data)}.wav"
-                                    with wave.open(temp_audio_path, "wb") as wf:
-                                        wf.setnchannels(1)  # Mono
-                                        wf.setsampwidth(2)  # 16-bit
-                                        wf.setframerate(24000)  # Gemini's output sample rate
-                                        wf.writeframes(audio_data)
-
-                                    logger.debug(f"Saved audio to {temp_audio_path} with transcript: '{transcript_text}'")
-                                    yield AudioOutput(
-                                        audio_path=temp_audio_path,
-                                        display_text=DisplayText(text=transcript_text, name=self.character_name, avatar=self.character_avatar),
-                                        transcript=transcript_text,
-                                        actions=actions
-                                    )
-
-                            # Track token usage if available
-                        if response.server_content.usage_metadata:
-                            prompt_tokens = response.server_content.usage_metadata.prompt_token_count or 0
-                            completion_tokens = response.server_content.usage_metadata.candidates_token_count or 0
-                            total_tokens = response.server_content.usage_metadata.total_token_count or 0
-
-                            self.total_prompt_tokens += prompt_tokens
-                            self.total_completion_tokens += completion_tokens
-                            self.total_tokens += total_tokens
-
-                            logger.info(f"Token usage - Prompt: {prompt_tokens}, Completion: {completion_tokens}, Total: {total_tokens}")
-                            logger.info(f"Cumulative token usage - Prompt: {self.total_prompt_tokens}, Completion: {self.total_completion_tokens}, Total: {self.total_tokens}")
-
-                            # Store token usage in metadata if history is enabled
-                            if self.history_conf_uid and self.history_history_uid:
-                                update_metadate(
-                                    self.history_conf_uid, self.history_history_uid,
-                                    {
-                                        "token_usage": {
-                                            "prompt_tokens": self.total_prompt_tokens,
-                                            "completion_tokens": self.total_completion_tokens,
-                                            "total_tokens": self.total_tokens
-                                        }
-                                    }
-                                )
-
-                        if response.server_content.generation_complete:
-                            logger.info("Gemini indicated generation complete.")
-                            if self.history_conf_uid and self.history_history_uid and accumulated_transcript:
-                                store_message(
-                                    conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
-                                    role="ai", content=accumulated_transcript,
-                                    name=self.character_name, avatar=self.character_avatar
-                                )
-                            break  # End of this turn's response
-
-                    if response.go_away:
-                        logger.warning(f"Gemini session go_away received: {response.go_away.message}. Time left: {response.go_away.time_left}")
-                        # Store the time left for potential reconnection before timeout
-                        time_left_seconds = response.go_away.time_left.seconds if response.go_away.time_left else 0
-
-                        # If we have enough time left (more than 10 seconds), try to reconnect
-                        if time_left_seconds > 10 and self.session_resumption_handle:
-                            logger.info(f"Will attempt to reconnect with session handle before timeout ({time_left_seconds}s left)")
-                            await self.close_session()
-                            # Force reconnection on next interaction
-                            await self._ensure_session()
-                        else:
-                            # Not enough time or no resumption handle, just close
-                            await self.close_session()
-                        break
-            except Exception as e:
-                logger.error(f"Error during Gemini Live chat: {e}")
-                # Return an error message to the user
-                yield AudioOutput(
-                    audio_path=None,
-                    display_text=DisplayText(
-                        text=f"Error communicating with Gemini: {str(e)}",
-                        name=self.character_name,
-                        avatar=self.character_avatar
-                    ),
-                    transcript=f"Error communicating with Gemini: {str(e)}",
-                    actions=Actions()
-                )
-            finally:
-                logger.debug("Exiting Gemini chat loop for this turn.")
-                # Ensure active audio stream is properly ended if not interrupted by user's speech
-                if self.active_audio_stream and not self.is_interrupted:
-                    if self.gemini_session and not getattr(self.gemini_session, '_conn', None) is None and not getattr(getattr(self.gemini_session, '_conn', None), 'closed', True):
-                        try:
-                            await self.gemini_session.send_realtime_input(audio_stream_end=True)
-                        except Exception as e_stream_end:
-                            logger.warning(f"Could not send audio_stream_end: {e_stream_end}")
-                    self.active_audio_stream = False
         except Exception as e:
             logger.error(f"Error in Gemini Live chat: {e}")
             # Return an error message to the user
@@ -511,6 +567,16 @@ class GeminiLiveAgent(AgentInterface):
                 transcript=f"Error: {str(e)}",
                 actions=Actions()
             )
+        finally:
+            logger.debug("Exiting Gemini chat loop for this turn.")
+            # Ensure active audio stream is properly ended if not interrupted by user's speech
+            if self.active_audio_stream and not self.is_interrupted:
+                if self.gemini_session and not getattr(self.gemini_session, '_conn', None) is None and not getattr(getattr(self.gemini_session, '_conn', None), 'closed', True):
+                    try:
+                        await self.gemini_session.send_realtime_input(audio_stream_end=True)
+                    except Exception as e_stream_end:
+                        logger.warning(f"Could not send audio_stream_end: {e_stream_end}")
+                self.active_audio_stream = False
 
     async def stream_audio_chunk(self, audio_chunk: bytes):
         """
@@ -613,6 +679,224 @@ class GeminiLiveAgent(AgentInterface):
             "google_search": self._handle_google_search
         }
 
+    def _extract_text_from_parts(self, parts) -> str:
+        """
+        Extract text content from model_turn.parts array.
+
+        Args:
+            parts: List of parts from model_turn.parts
+
+        Returns:
+            Concatenated text from all text parts
+        """
+        extracted_text = ""
+
+        for i, part in enumerate(parts):
+            # Log the attributes of each part for debugging
+            if logger.level == "DEBUG":
+                part_attrs = [attr for attr in dir(part) if not attr.startswith('_')]
+                logger.debug(f"Part {i} attributes: {part_attrs}")
+
+                # Log the type of the part
+                if hasattr(part, 'type'):
+                    logger.debug(f"Part {i} type: {part.type}")
+
+                # Log the mime_type if it's inline_data
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    if hasattr(part.inline_data, 'mime_type'):
+                        logger.debug(f"Part {i} mime_type: {part.inline_data.mime_type}")
+
+            # Extract text from text parts
+            if hasattr(part, 'text') and part.text:
+                extracted_text += part.text
+                logger.debug(f"Found text in part {i}: {part.text}")
+
+            # Check for text in other attributes
+            if hasattr(part, 'content') and part.content:
+                logger.debug(f"Found content in part {i}: {part.content}")
+
+            if hasattr(part, 'transcript') and part.transcript:
+                logger.debug(f"Found transcript in part {i}: {part.transcript}")
+
+        return extracted_text
+
+    def _remove_emotion_tags(self, text: str) -> str:
+        """
+        Remove emotion tags from text.
+
+        Args:
+            text: Text with potential emotion tags
+
+        Returns:
+            Text with emotion tags removed
+        """
+        if not text:
+            return ""
+
+        # Regular expression to match both formats:
+        # [emotion] and [emotion:intensity]
+        # This pattern is more robust and handles various formats
+        emotion_pattern = r'\[\s*([a-zA-Z_]+)(?:\s*:\s*([0-9]*\.?[0-9]+))?\s*\]'
+
+        # Log the original text for debugging
+        logger.debug(f"Original text before emotion tag removal: '{text}'")
+
+        # Remove all emotion tags from the text
+        clean_text = re.sub(emotion_pattern, '', text)
+
+        # Clean up any extra spaces (including multiple spaces, newlines, etc.)
+        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+
+        # Log the cleaned text for debugging
+        logger.debug(f"Cleaned text after emotion tag removal: '{clean_text}'")
+
+        # If the text changed, log that emotion tags were removed
+        if clean_text != text:
+            logger.info(f"Removed emotion tags from text")
+
+        return clean_text
+
+    async def _extract_emotions_and_generate_response(self, user_message: str) -> AsyncIterator[AudioOutput]:
+        """
+        Single prompt approach: Generate a response that may include emotion tags,
+        extract emotions for facial expressions, and remove tags from displayed text.
+
+        Args:
+            user_message: The user's message to respond to
+
+        Returns:
+            An async iterator of AudioOutput objects
+        """
+        if not self.gemini_session:
+            logger.error("No active Gemini session for response generation")
+            yield AudioOutput(
+                audio_path=None,
+                display_text=DisplayText(text="Error: Could not connect to Gemini."),
+                transcript="Error: Could not connect to Gemini.",
+                actions=Actions()
+            )
+            return
+
+        try:
+            # Create a prompt that allows emotion tags but instructs not to pronounce them
+            prompt = (
+                f"The user said: \"{user_message}\"\n\n"
+                "You can include emotion tags like [joy], [surprise], [sadness], etc. to indicate "
+                "your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. "
+                "These tags will control your facial expressions but should NOT be spoken aloud. "
+                "Respond naturally as if the tags aren't there."
+            )
+
+            # Send the prompt
+            await self.gemini_session.send_client_content(
+                turns={"role": "user", "parts": [{"text": prompt}]},
+                turn_complete=True
+            )
+
+            # Process the response
+            accumulated_transcript = ""
+            actions = Actions()
+
+            async for response in self.gemini_session.receive():
+                if self.is_interrupted:
+                    logger.info("Gemini Live: Interruption acknowledged, stopping response processing.")
+                    break
+
+                if response.server_content and response.server_content.model_turn and response.server_content.model_turn.parts:
+                    # Extract all text content from model_turn.parts
+                    model_turn_text = self._extract_text_from_parts(response.server_content.model_turn.parts)
+
+                    # Extract emotion tags for facial expressions if we have text and a Live2D model
+                    if model_turn_text and self.live2d_model and not actions.expressions:
+                        expression_tuples = self.live2d_model.extract_emotion(model_turn_text)
+                        if expression_tuples:
+                            interpolated_expressions = [
+                                self.live2d_model.get_interpolated_expression(idx, intensity)
+                                for idx, intensity in expression_tuples
+                            ]
+                            actions.expressions = interpolated_expressions
+                            logger.info(f"Extracted expressions: {expression_tuples}")
+
+                    # Process audio parts
+                    for part in response.server_content.model_turn.parts:
+                        if part.inline_data and part.inline_data.mime_type.startswith("audio/"):
+                            audio_data = part.inline_data.data
+
+                            # Find transcript from various possible locations
+                            transcript_text = ""
+
+                            # Try various locations for transcript
+                            if hasattr(response.server_content, 'output_transcription') and response.server_content.output_transcription:
+                                if hasattr(response.server_content.output_transcription, 'text'):
+                                    transcript_text = response.server_content.output_transcription.text
+
+                            if not transcript_text and hasattr(response, 'output_transcription') and response.output_transcription:
+                                if hasattr(response.output_transcription, 'text'):
+                                    transcript_text = response.output_transcription.text
+
+                            if not transcript_text and hasattr(response, 'text') and response.text:
+                                transcript_text = response.text
+
+                            if not transcript_text and hasattr(part, 'text') and part.text:
+                                transcript_text = part.text
+
+                            if not transcript_text and hasattr(response.server_content.model_turn, 'text') and response.server_content.model_turn.text:
+                                transcript_text = response.server_content.model_turn.text
+
+                            if not transcript_text and hasattr(response.server_content, 'transcript') and response.server_content.transcript:
+                                transcript_text = response.server_content.transcript
+
+                            if not transcript_text and model_turn_text:
+                                transcript_text = model_turn_text
+
+                            # If we found a transcript, use it
+                            if transcript_text:
+                                # For display, we'll use the transcript but remove emotion tags
+                                display_transcript = self._remove_emotion_tags(transcript_text)
+
+                                # Save audio to a temporary file
+                                temp_audio_path = f"cache/gemini_live_{id(audio_data)}.wav"
+                                with wave.open(temp_audio_path, "wb") as wf:
+                                    wf.setnchannels(1)  # Mono
+                                    wf.setsampwidth(2)  # 16-bit
+                                    wf.setframerate(24000)  # Gemini's output sample rate
+                                    wf.writeframes(audio_data)
+
+                                logger.debug(f"Saved audio to {temp_audio_path}")
+                                logger.debug(f"Display transcript: '{display_transcript}'")
+
+                                yield AudioOutput(
+                                    audio_path=temp_audio_path,
+                                    display_text=DisplayText(text=display_transcript, name=self.character_name, avatar=self.character_avatar),
+                                    transcript=display_transcript,
+                                    actions=actions
+                                )
+
+                                accumulated_transcript += display_transcript
+
+                if response.server_content and response.server_content.generation_complete:
+                    logger.info("Gemini indicated generation complete.")
+                    if self.history_conf_uid and self.history_history_uid and accumulated_transcript:
+                        store_message(
+                            conf_uid=self.history_conf_uid, history_uid=self.history_history_uid,
+                            role="ai", content=accumulated_transcript,
+                            name=self.character_name, avatar=self.character_avatar
+                        )
+                    break
+
+        except Exception as e:
+            logger.error(f"Error during response generation: {e}")
+            yield AudioOutput(
+                audio_path=None,
+                display_text=DisplayText(
+                    text=f"Error generating response: {str(e)}",
+                    name=self.character_name,
+                    avatar=self.character_avatar
+                ),
+                transcript=f"Error generating response: {str(e)}",
+                actions=Actions()
+            )
+
     async def _handle_function_call(self, function_call: Dict[str, Any]) -> Dict[str, Any]:
         """Handle a function call from Gemini.
 
@@ -684,42 +968,84 @@ class GeminiLiveAgent(AgentInterface):
             ]
         }
 
-    async def _process_tool_calls(self, tool_calls: List[Dict[str, Any]]) -> None:
+    async def _process_tool_calls(self, tool_calls: List[Any]) -> None:
         """Process tool calls from Gemini.
 
         Args:
-            tool_calls: List of tool calls to process
+            tool_calls: List of tool calls to process (can be dict or object)
         """
         if not tool_calls or not self.gemini_session:
             return
 
         for tool_call in tool_calls:
-            tool_type = next(iter(tool_call.keys()), None)
-            if not tool_type or tool_type not in self.tool_handlers:
-                logger.warning(f"Unknown tool type: {tool_type}")
-                continue
-
             try:
+                # Handle different tool call formats based on SDK version
+                if isinstance(tool_call, dict):
+                    # Old format: dictionary with tool type as key
+                    tool_type = next(iter(tool_call.keys()), None)
+                    tool_data = tool_call.get(tool_type, {})
+                elif hasattr(tool_call, 'function_call'):
+                    # New format: object with function_call attribute
+                    tool_type = 'function'
+                    tool_data = {
+                        'name': tool_call.function_call.name if hasattr(tool_call.function_call, 'name') else '',
+                        'args': tool_call.function_call.args if hasattr(tool_call.function_call, 'args') else {}
+                    }
+                elif hasattr(tool_call, 'code_execution'):
+                    # New format: object with code_execution attribute
+                    tool_type = 'code_execution'
+                    tool_data = tool_call.code_execution
+                elif hasattr(tool_call, 'google_search'):
+                    # New format: object with google_search attribute
+                    tool_type = 'google_search'
+                    tool_data = tool_call.google_search
+                else:
+                    logger.warning(f"Unknown tool call format: {tool_call}")
+                    continue
+
+                if tool_type not in self.tool_handlers:
+                    logger.warning(f"Unknown tool type: {tool_type}")
+                    continue
+
                 # Get the handler for this tool type
                 handler = self.tool_handlers[tool_type]
 
                 # Call the handler with the tool call data
-                response = await handler(tool_call[tool_type])
+                response = await handler(tool_data)
 
                 # Send the response back to Gemini
-                await self.gemini_session.send_tool_response({
-                    tool_type: response
-                })
+                # For new SDK, we need to use function_response format
+                if hasattr(genai_types, 'FunctionResponse') and tool_type == 'function':
+                    # New SDK format for function responses
+                    function_response = genai_types.FunctionResponse(
+                        name=tool_data.get('name', ''),
+                        response=response.get('response', {})
+                    )
+                    await self.gemini_session.send_tool_response(function_responses=[function_response])
+                else:
+                    # Fall back to old format
+                    await self.gemini_session.send_tool_response({
+                        tool_type: response
+                    })
 
                 logger.info(f"Sent {tool_type} response to Gemini")
             except Exception as e:
-                logger.error(f"Error processing {tool_type} call: {e}")
+                logger.error(f"Error processing tool call: {e}")
                 # Send error response if possible
                 if self.gemini_session:
                     try:
-                        await self.gemini_session.send_tool_response({
-                            tool_type: {"error": str(e)}
-                        })
+                        if hasattr(genai_types, 'FunctionResponse') and tool_type == 'function':
+                            # New SDK format for function error responses
+                            function_response = genai_types.FunctionResponse(
+                                name=tool_data.get('name', ''),
+                                error=str(e)
+                            )
+                            await self.gemini_session.send_tool_response(function_responses=[function_response])
+                        else:
+                            # Fall back to old format
+                            await self.gemini_session.send_tool_response({
+                                tool_type: {"error": str(e)}
+                            })
                     except Exception as e2:
                         logger.error(f"Error sending tool error response: {e2}")
 
