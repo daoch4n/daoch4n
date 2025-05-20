@@ -172,6 +172,9 @@ class GeminiLiveConfig(I18nMixin, BaseModel):
     # Manual VAD control
     disable_automatic_vad: bool = Field(False, alias="disable_automatic_vad")
 
+    # Emotion tag handling approach
+    use_dual_prompt_system: bool = Field(False, alias="use_dual_prompt_system")
+
     DESCRIPTIONS: ClassVar[Dict[str, Description]] = {
         "api_key": Description(
             en="Gemini API Key", zh="Gemini API 密钥"
@@ -243,6 +246,10 @@ class GeminiLiveConfig(I18nMixin, BaseModel):
         "disable_automatic_vad": Description(
             en="Disable automatic VAD and use manual activity detection",
             zh="禁用自动VAD并使用手动活动检测"
+        ),
+        "use_dual_prompt_system": Description(
+            en="Use the two-step approach for handling emotion tags (planning phase + clean response phase)",
+            zh="使用两步法处理情绪标签（规划阶段 + 清洁响应阶段）"
         ),
     }
 
