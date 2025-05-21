@@ -16,6 +16,7 @@ from ..output_types import AudioOutput, Actions, DisplayText
 from ..input_types import BatchInput, TextData, TextSource
 from ...config_manager.agent import GeminiLiveConfig
 from ...chat_history_manager import get_history, store_message, get_metadata, update_metadate
+from ...utils.emotion_maps import EMOTION_NAME_TO_EMOJI_MAP
 
 # Note: For VAD sensitivity, we use string values directly in the configuration
 # Valid values for start_of_speech_sensitivity: START_SENSITIVITY_LOW, START_SENSITIVITY_MEDIUM, START_SENSITIVITY_HIGH
@@ -260,11 +261,13 @@ class GeminiLiveAgent(AgentInterface):
             # Create a planning prompt that asks for emotion tags
             planning_prompt = (
                 f"The user said: \"{user_message}\"\n\n"
-                "Plan your response to the user and include emotion tags like [joy], [surprise], [sadness], etc. "
-                "to indicate your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. "
-                "These tags are for internal planning and facial expression control ONLY and should NOT be spoken aloud in the final response. "
-                "The final spoken response should be natural and conversational without any emotion tags. "
-                "For display purposes, you should output emojis corresponding to the emotions, e.g., instead of [joy] output 😊."
+                "You are in a planning phase. Plan your response. Indicate the emotional tone by including appropriate emojis directly in the planned text. "
+                "To indicate intensity in your plan, repeat the SAME emoji: "
+                "Use one emoji for subtle intensity (e.g., 😊 for slight joy). "
+                "Use two of the same emoji for medium intensity (e.g., 😊😊 for medium joy). "
+                "Use three of the same emoji for high intensity (e.g., 😊😊😊 for strong joy). "
+                "Do NOT use bracketed emotion tags like [joy]. Use emojis with repetition for intensity instead. "
+                "This planned text with emojis is for internal use to determine facial expressions based on the emoji and its repetition count. The final spoken response will be generated separately and should be natural, without these emojis being literally described or spoken."
             )
 
             # Send the planning prompt
@@ -722,16 +725,8 @@ class GeminiLiveAgent(AgentInterface):
 
         return extracted_text
 
-    EMOTION_TO_EMOJI_MAP = {
-        "joy": "😊",
-        "surprise": "😮",
-        "sadness": "😢",
-        "anger": "😡",
-        "disgust": "🤢",
-        "fear": "😨",
-        "smirk": "😏",
-        "neutral": "😐",
-    }
+    # Use the centralized map
+    EMOTION_TO_EMOJI_MAP = EMOTION_NAME_TO_EMOJI_MAP
 
     def _process_emotion_tags_for_display(self, text: str) -> str:
         """
@@ -792,10 +787,17 @@ class GeminiLiveAgent(AgentInterface):
             return
 
         try:
-            # Create a prompt that allows emotion tags but instructs not to pronounce them
+            # Create a prompt that instructs the LLM to use emojis for emotion indication
             prompt = (
                 f"The user said: \"{user_message}\"\n\n"
-                "Respond naturally to the user. For emotion indication in the transcription, directly output one of the following emojis: 😊, 😮, 😢, 😡, 🤢, 😨, 😏, 😐. Do NOT output any emotion tags like [joy] or [sadness]. The emojis should be present in the transcription but not spoken aloud."
+                "Respond naturally to the user. Indicate your emotional tone by including appropriate emojis directly in your text response. "
+                "To indicate intensity, repeat the SAME emoji: "
+                "Use one emoji for subtle intensity (e.g., 😊 for slight joy). "
+                "Use two of the same emoji for medium intensity (e.g., 😊😊 for medium joy). "
+                "Use three of the same emoji for high intensity (e.g., 😊😊😊 for strong joy). "
+                "Example: 'That's good news 😊', 'That's great news 😊😊', 'That's fantastic news 😊😊😊'.\n"
+                "Do NOT use bracketed emotion tags like [joy]. Use emojis with repetition for intensity instead. "
+                "CRITICAL INSTRUCTION: These emojis (and their repetitions) will control facial expressions. They should appear in the text transcript but MUST NOT be spoken aloud by the voice (e.g., for 'I am happy 😊', speak 'I am happy')."
             )
 
             # Send the prompt
@@ -863,7 +865,7 @@ class GeminiLiveAgent(AgentInterface):
                             # If we found a transcript, use it
                             if transcript_text:
                                 # For display, we'll use the transcript but remove emotion tags
-                                display_transcript = self._process_emotion_tags_for_display(transcript_text)
+                                display_transcript = self._process_emotion_tags_for_display(model_turn_text if model_turn_text else transcript_text)
 
                                 # Save audio to a temporary file
                                 temp_audio_path = f"cache/gemini_live_{id(audio_data)}.wav"

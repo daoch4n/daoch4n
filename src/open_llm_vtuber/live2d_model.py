@@ -1,6 +1,7 @@
 import json
 import chardet
 from loguru import logger
+from open_llm_vtuber.utils.emotion_maps import EMOJI_TO_EMOTION_NAME_MAP
 
 # This class will only prepare the payload for the live2d model
 # the process of sending the payload should be done by the caller
@@ -167,39 +168,67 @@ class Live2dModel:
                  For backward compatibility, if no intensity is specified, it defaults to 1.0.
         """
         import re
+        
+        found_emotions = {} # Using a dict to store emotion_name: (index, intensity), allows easy override / precedence
 
-        # Regular expression to match both formats:
-        # [emotion] and [emotion:intensity]
-        emotion_pattern = r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]'
+        # 1. Process bracketed tags first (higher precedence for intensity)
+        # Ensure matching is case-insensitive for emotion names in tags
+        str_to_check_lower_for_tags = str_to_check.lower() 
+        emotion_pattern_tags = r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]'
+        tag_matches = re.finditer(emotion_pattern_tags, str_to_check_lower_for_tags)
 
-        expression_list = []
-        str_to_check = str_to_check.lower()
-
-        # Find all emotion tags in the text
-        matches = re.finditer(emotion_pattern, str_to_check)
-
-        for match in matches:
-            emotion = match.group(1)
+        for match in tag_matches:
+            emotion_name_from_tag = match.group(1) # This is already lower
             intensity_str = match.group(2)
 
-            # Check if the emotion exists in our emotion map
-            if emotion in self.emo_map:
-                # Get the expression index
-                expression_index = self.emo_map[emotion]
-
-                # Parse intensity value, default to 1.0 if not specified
+            if emotion_name_from_tag in self.emo_map: # self.emo_map keys are lowercase
+                expression_index = self.emo_map[emotion_name_from_tag]
                 intensity = 1.0
                 if intensity_str:
                     try:
                         intensity = float(intensity_str)
-                        # Clamp intensity to valid range [0.0, 1.0]
                         intensity = max(0.0, min(1.0, intensity))
                     except ValueError:
-                        # If conversion fails, use default intensity
-                        intensity = 1.0
+                        pass # Keep default 1.0
+                found_emotions[emotion_name_from_tag] = (expression_index, intensity)
 
-                expression_list.append((expression_index, intensity))
+        # 2. Process emojis and their sequences for intensity
+        # For emojis, str_to_check does not need to be lowercased as emojis are specific.
+        for emoji_char, emotion_name_from_map in EMOJI_TO_EMOTION_NAME_MAP.items():
+            emotion_name_lower = emotion_name_from_map.lower()
 
+            # Only process if this emotion wasn't already found by a tag
+            if emotion_name_lower not in found_emotions:
+                if emotion_name_lower in self.emo_map: # Check if the emoji's emotion is valid for the model
+                    expression_index = self.emo_map[emotion_name_lower]
+                    
+                    best_match_count_for_current_emoji = 0
+                    # Escape the emoji character in case it contains regex special characters
+                    escaped_emoji_char = re.escape(emoji_char)
+                    # Pattern for one or more consecutive occurrences of the current emoji
+                    emoji_sequence_pattern = f"({escaped_emoji_char})+" 
+                    
+                    for match in re.finditer(emoji_sequence_pattern, str_to_check):
+                        # Calculate count based on the length of the matched sequence and the length of the emoji itself
+                        current_sequence_len = len(match.group(0)) // len(emoji_char) 
+                        if current_sequence_len > best_match_count_for_current_emoji:
+                            best_match_count_for_current_emoji = current_sequence_len
+                    
+                    if best_match_count_for_current_emoji > 0:
+                        intensity = 0.0
+                        if best_match_count_for_current_emoji == 1:
+                            intensity = 0.3
+                        elif best_match_count_for_current_emoji == 2:
+                            intensity = 0.6
+                        elif best_match_count_for_current_emoji >= 3:
+                            intensity = 0.9
+                        
+                        # The outer 'if emotion_name_lower not in found_emotions:' already ensures this.
+                        # So, we can directly assign.
+                        found_emotions[emotion_name_lower] = (expression_index, intensity)
+
+        # Convert the dictionary to the required list format
+        expression_list = list(found_emotions.values())
         return expression_list
 
     def remove_emotion_keywords(self, target_str: str) -> str:
