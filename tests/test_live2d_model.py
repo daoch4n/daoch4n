@@ -36,33 +36,9 @@ class TestLive2dModelExtractEmotion(unittest.TestCase):
         """Helper to compare lists of tuples, ignoring order."""
         self.assertEqual(set(map(tuple, list1)), set(map(tuple, list2)), msg)
 
-    def test_single_emoji_intensity(self): # Renamed and updated
-        input_str = "Hello 😊, what a 😮 day!" # joy, surprise
-        expected = [(0, 0.3), (1, 0.3)] 
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
-
-    def test_two_consecutive_emojis_intensity(self): # New
-        input_str = "Wow 😮😮" # surprise
-        expected = [(1, 0.6)]
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
-
-    def test_three_consecutive_emojis_intensity(self): # New
-        input_str = "So sad 😢😢😢" # sadness
-        expected = [(2, 0.9)]
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
-
-    def test_four_consecutive_emojis_intensity(self): # New
-        input_str = "Anger 😡😡😡😡" # anger
-        expected = [(3, 0.9)] # Max intensity for 3+
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
-        
-    def test_mixed_single_and_multiple_emojis_intensity(self): # New
-        input_str = "😊 and 😮😮😮" # joy (0.3), surprise (0.9)
-        expected = [(0, 0.3), (1, 0.9)]
+    def test_emojis_only(self):
+        input_str = "Hello 😊, what a 😮 day!"
+        expected = [(0, 1.0), (1, 1.0)] # joy, surprise
         result = self.model.extract_emotion(input_str)
         self.assertEmotionListsEqual(result, expected)
 
@@ -78,45 +54,30 @@ class TestLive2dModelExtractEmotion(unittest.TestCase):
         result = self.model.extract_emotion(input_str)
         self.assertEmotionListsEqual(result, expected)
 
-    def test_mixed_emojis_and_tags_different_emotions_sequences(self): # Updated
-        input_str = "I am 😊😊 and also [anger:0.7]." # joy (0.6), anger (0.7)
-        expected = [(0, 0.6), (3, 0.7)] 
+    def test_mixed_emojis_and_tags_different_emotions(self):
+        input_str = "I am 😊 and also [anger:0.7]."
+        expected = [(0, 1.0), (3, 0.7)] # joy, anger
         result = self.model.extract_emotion(input_str)
         self.assertEmotionListsEqual(result, expected)
 
-    # New tests for tag precedence with new emoji intensity logic
-    def test_tag_precedence_over_single_emoji(self): 
-        input_str = "😊 [joy:0.7]" # joy emoji (0.3) vs joy tag (0.7)
-        expected = [(0, 0.7)] # Tag intensity wins
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
+    def test_emoji_and_tag_same_emotion_tag_intensity_preferred(self):
+        input_str1 = "This is great 😊 [joy:0.3]!"
+        expected1 = [(0, 0.3)] # joy
+        result1 = self.model.extract_emotion(input_str1)
+        self.assertEmotionListsEqual(result1, expected1, "Failed for: emoji then tag with intensity")
 
-    def test_tag_precedence_over_multiple_emojis(self): 
-        input_str = "😊😊😊 [joy:0.2]" # joy emoji sequence (0.9) vs joy tag (0.2)
-        expected = [(0, 0.2)] # Tag intensity wins
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
+        input_str2 = "This is great [joy:0.3] 😊!"
+        expected2 = [(0, 0.3)] # joy
+        result2 = self.model.extract_emotion(input_str2)
+        self.assertEmotionListsEqual(result2, expected2, "Failed for: tag with intensity then emoji")
+        
+        input_str3 = "This is great [joy] 😊!" # Tag without intensity, and emoji
+        expected3 = [(0, 1.0)] # joy, intensity from tag (default 1.0)
+        result3 = self.model.extract_emotion(input_str3)
+        self.assertEmotionListsEqual(result3, expected3, "Failed for: tag no intensity then emoji")
 
-    def test_tag_default_intensity_precedence_over_single_emoji(self): 
-        input_str = "😊 [joy]" # joy emoji (0.3) vs joy tag (default 1.0)
-        expected = [(0, 1.0)] 
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
-
-    def test_tag_default_intensity_precedence_over_multiple_emojis(self): 
-        input_str = "😊😊😊 [joy]" # joy emoji sequence (0.9) vs joy tag (default 1.0)
-        expected = [(0, 1.0)] 
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
-
-    def test_emoji_sequence_with_tag_for_different_emotion(self): 
-        input_str = "😊😊 [anger:0.5]" # joy (0.6), anger (0.5)
-        expected = [(0, 0.6), (3, 0.5)]
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
-
-    def test_unknown_emojis_and_tags(self): # Updated to include sequence
-        input_str = "Hello 👽 [unknown_emotion] 👽👽 world." # Unknown emoji, unknown tag
+    def test_unknown_emojis_and_tags(self):
+        input_str = "Hello 👽 [unknown_emotion] world."
         expected = []
         result = self.model.extract_emotion(input_str)
         self.assertEmotionListsEqual(result, expected)
@@ -139,28 +100,28 @@ class TestLive2dModelExtractEmotion(unittest.TestCase):
         result = self.model.extract_emotion(input_str)
         self.assertEmotionListsEqual(result, expected)
 
-    # This test is effectively covered by test_tag_default_intensity_precedence_over_multiple_emojis
-    # and test_tag_default_intensity_precedence_over_single_emoji.
-    # The old test_emoji_and_tag_same_emotion_tag_no_intensity_emoji_first is removed.
+    def test_emoji_and_tag_same_emotion_tag_no_intensity_emoji_first(self):
+        # Added based on a potential ambiguity in precedence rules from previous prompt
+        # If tag has no intensity, it defaults to 1.0. Emoji also defaults to 1.0.
+        # Tag still takes precedence.
+        input_str = "This is great 😊 [joy]!" 
+        expected = [(0, 1.0)] # joy, intensity from tag (default 1.0)
+        result = self.model.extract_emotion(input_str)
+        self.assertEmotionListsEqual(result, expected, "Failed for: emoji then tag no intensity")
 
-    def test_multiple_tags_and_emojis_complex_with_sequences(self): # Updated
-        input_str = "[sadness:0.8] I am 😢😢 but also [joy:0.1] and a bit 😊😊😊, maybe 😮 [surprise]."
-        # sadness tag (2, 0.8) - takes precedence over 😢😢 (0.6)
-        # joy tag (0, 0.1) - takes precedence over 😊😊😊 (0.9)
-        # surprise tag (1, 1.0) - takes precedence over 😮 (0.3)
-        expected = [(2, 0.8), (0, 0.1), (1, 1.0)]
+    def test_multiple_tags_and_emojis_complex(self):
+        input_str = "[sadness] I am 😢 but also [joy:0.1] and a bit 😊, maybe 😮 [surprise:0.9]."
+        # sadness tag (2, 1.0)
+        # sadness emoji (😢) - ignored due to sadness tag
+        # joy tag (0, 0.1) - takes precedence
+        # joy emoji (😊) - ignored due to joy tag
+        # surprise tag (1, 0.9) - takes precedence
+        # surprise emoji (😮) - ignored due to surprise tag
+        expected = [(2, 1.0), (0, 0.1), (1, 0.9)]
         result = self.model.extract_emotion(input_str)
         self.assertEmotionListsEqual(result, expected)
-    
-    def test_non_consecutive_emojis_are_separate_longest_sequence_wins_for_type(self): # New name and clarified logic
-        input_str = "Happy 😊 then sad 😢 then very happy 😊😊😊."
-        # Longest sequence for joy is "😊😊😊" (0.9)
-        # Longest sequence for sadness is "😢" (0.3)
-        expected = [(0, 0.9), (2, 0.3)] 
-        result = self.model.extract_emotion(input_str)
-        self.assertEmotionListsEqual(result, expected)
 
-    def test_intensity_clamping_for_tags(self): # Renamed for clarity
+    def test_intensity_clamping(self):
         input_str = "[joy:5.0] [sadness:-1.0] [anger:0.77]"
         # joy intensity should be clamped to 1.0
         # sadness intensity should be clamped to 0.0

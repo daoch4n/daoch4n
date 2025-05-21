@@ -9,12 +9,6 @@ from loguru import logger
 from .agent.agents.gemini_live_agent import GeminiLiveAgent
 
 from .service_context import ServiceContext
-from .chat_group import (
-    ChatGroupManager,
-    handle_group_operation,
-    handle_client_disconnect,
-    broadcast_to_group,
-)
 from .message_handler import message_handler
 from .utils.stream_audio import prepare_audio_payload
 from .chat_history_manager import (
@@ -26,20 +20,12 @@ from .chat_history_manager import (
 from .config_manager.utils import scan_config_alts_directory, scan_bg_directory
 from .conversations.conversation_handler import (
     handle_conversation_trigger,
-    handle_individual_interrupt,
 )
 
 
 class MessageType(Enum):
     """Enum for WebSocket message types"""
 
-    GROUP = ["add-client-to-group", "remove-client-from-group"]
-    HISTORY = [
-        "fetch-history-list",
-        "fetch-and-set-history",
-        "create-new-history",
-        "delete-history",
-    ]
     CONVERSATION = ["mic-audio-end", "text-input", "ai-speak-signal"]
     CONFIG = ["fetch-configs", "switch-config"]
     CONTROL = ["interrupt-signal", "audio-play-start"]
@@ -66,7 +52,6 @@ class WebSocketHandler:
         """Initialize the WebSocket handler with default context"""
         self.client_connections: Dict[str, WebSocket] = {}
         self.client_contexts: Dict[str, ServiceContext] = {}
-        self.chat_group_manager = ChatGroupManager()
         self.current_conversation_tasks: Dict[str, Optional[asyncio.Task]] = {}
         self.default_context_cache = default_context_cache
         self.received_data_buffers: Dict[str, np.ndarray] = {}
@@ -338,22 +323,12 @@ class WebSocketHandler:
         context = self.client_contexts[client_uid]
         group = self.chat_group_manager.get_client_group(client_uid)
 
-        if group and len(group.members) > 1:
-            await handle_group_interrupt(
-                group_id=group.group_id,
-                heard_response=heard_response,
-                current_conversation_tasks=self.current_conversation_tasks,
-                chat_group_manager=self.chat_group_manager,
-                client_contexts=self.client_contexts,
-                broadcast_to_group=self.broadcast_to_group,
-            )
-        else:
-            await handle_individual_interrupt(
-                client_uid=client_uid,
-                current_conversation_tasks=self.current_conversation_tasks,
-                context=context,
-                heard_response=heard_response,
-            )
+        await handle_individual_interrupt(
+            client_uid=client_uid,
+            current_conversation_tasks=self.current_conversation_tasks,
+            context=context,
+            heard_response=heard_response,
+        )
 
     async def _handle_history_list_request(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
