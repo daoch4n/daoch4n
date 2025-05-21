@@ -260,7 +260,9 @@ async def handle_group_member_turn(
         )
 
     if full_response:
-        ai_message = f"{context.character_config.character_name}: {full_response}"
+        # Ensure emojis are correctly displayed by processing emotion tags for display
+        processed_full_response = context.agent_engine._process_emotion_tags_for_display(full_response)
+        ai_message = f"{context.character_config.character_name}: {processed_full_response}"
         state.conversation_history.append(ai_message)
         logger.info(f"Appended complete response: {ai_message}")
 
@@ -270,7 +272,7 @@ async def handle_group_member_turn(
                 conf_uid=member_context.character_config.conf_uid,
                 history_uid=member_context.history_uid,
                 role="ai",
-                content=full_response,
+                content=processed_full_response,
                 name=context.character_config.character_name,
                 avatar=context.character_config.avatar,
             )
