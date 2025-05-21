@@ -795,11 +795,7 @@ class GeminiLiveAgent(AgentInterface):
             # Create a prompt that allows emotion tags but instructs not to pronounce them
             prompt = (
                 f"The user said: \"{user_message}\"\n\n"
-                "You can include emotion tags like [joy], [surprise], [sadness], etc. to indicate "
-                "your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. "
-                "These tags will control your facial expressions and should NOT be spoken aloud. "
-                "Instead of spoken emotion tags, you should output corresponding emojis for display purposes (e.g., [joy] becomes 😊). "
-                "Respond naturally as if the tags aren't there, but include the emojis in the text for display."
+                "Respond naturally to the user. For emotion indication in the transcription, directly output one of the following emojis: 😊, 😮, 😢, 😡, 🤢, 😨, 😏, 😐. Do NOT output any emotion tags like [joy] or [sadness]. The emojis should be present in the transcription but not spoken aloud."
             )
 
             # Send the prompt
