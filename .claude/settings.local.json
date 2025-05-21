@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add src/open_llm_vtuber/agent/agents/gemini_live_agent.py)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nEnhance Gemini Live Agent to output emojis for emotion tags.\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git add frontend-src src/open_llm_vtuber/agent/agents/gemini_live_agent.py src/open_llm_vtuber/conversations/group_conversation.py)",
+      "Bash(git commit -m \"Fix: Ensure emojis are correctly displayed in transcription and chat history.\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\n\")",
+      "Bash(rm src/open_llm_vtuber/conversations/group_conversation.py)",
+      "Bash(git add frontend-src src/open_llm_vtuber/conversations/conversation_handler.py src/open_llm_vtuber/conversations/group_conversation.py)",
+      "Bash(git commit -m \"$(cat <<'EOF'\nRefactor: Remove group conversation functionality to simplify conversation handling and focus on single user interactions. This streamlines the codebase by eliminating unused complexity.\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(GIT_AUTHOR_NAME=\"zen-ai-dev[bot]\" GIT_AUTHOR_EMAIL=\"210175559+zen-ai-dev[bot]@users.noreply.github.com\" git commit -m \"$(cat <<'EOF'\nEnhance: Rewrite LLM prompt for emotion indication to use direct emojis in transcription.\n\n🤖 Generated with [Claude Code](https://claude.ai/code)\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
+    ],
+    "deny": []
+  }
+}

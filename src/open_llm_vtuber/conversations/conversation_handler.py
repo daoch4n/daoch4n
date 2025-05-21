@@ -8,7 +8,6 @@ from loguru import logger
 
 from ..agent.agents.gemini_live_agent import GeminiLiveAgent
 
-from ..chat_group import ChatGroupManager
 from ..chat_history_manager import store_message
 from ..service_context import ServiceContext
 from .single_conversation import process_single_conversation
@@ -26,10 +25,8 @@ async def handle_conversation_trigger(
     websocket: WebSocket,
     client_contexts: Dict[str, ServiceContext],
     client_connections: Dict[str, WebSocket],
-    chat_group_manager: ChatGroupManager,
     received_data_buffers: Dict[str, np.ndarray],
     current_conversation_tasks: Dict[str, Optional[asyncio.Task]],
-    broadcast_to_group: Callable,
 ) -> None:
     """Handle triggers that start a conversation"""
     # Special handling for Gemini Live Agent when audio ends
