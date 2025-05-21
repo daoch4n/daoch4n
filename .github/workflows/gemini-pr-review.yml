@@ -112,7 +112,7 @@ jobs:
           GEMINI_ALT_2: ${{ secrets.GEMINI_ALT_2 }}
           GEMINI_ALT_3: ${{ secrets.GEMINI_ALT_3 }}
           GEMINI_ALT_4: ${{ secrets.GEMINI_ALT_4 }}
-          GEMINI_MODEL: gemini-2.5-flash-preview-04-17 # As per your request
+          GEMINI_MODEL: gemini-2.5-flash-preview-05-20
           INPUT_EXCLUDE: "*.md,*.txt,*.json,*.lock,*.yml,*.yaml,*.svg,*.png,*.jpg,*.jpeg,*.gif,*.ico,*.woff,*.woff2,*.ttf,*.eot,*.otf,*.map,*.min.js,*.min.css,reviews/gemini-pr-review.json,*.test.js,*.d.ts,vendor/**,node_modules/**,dist/**,build/**"
           GITHUB_EVENT_PATH: ${{ github.event_path }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
