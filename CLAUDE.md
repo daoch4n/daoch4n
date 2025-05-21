@@ -47,11 +47,11 @@ Precision is key for successful file edits. The following strategies lead to rel
 
 ## Commit Messages
 
-When commits are generated on your behalf:
-*   They will be attributed to the `zen-ai-dev[bot]` GitHub App.
+When Claude Code generates commit messages on your behalf:
+*   The commits will be attributed to the `zen-ai-dev[bot]` GitHub App.
 *   The commit author email will be `210175559+zen-ai-dev[bot]@users.noreply.github.com`.
-*   This ensures proper attribution and tracking of automated contributions.
-
+*   The `Co-Authored-By: Claude <noreply@anthropic.com>` line will **not** be included.
+*   The `🤖 Generated with [Claude Code](https://claude.ai/code)` line will **not** be included.
 ## General Interaction
 
 Claude Code will directly apply proposed changes and modifications using the available tools, rather than describing them and asking you to implement them manually. This ensures a more efficient and direct workflow.

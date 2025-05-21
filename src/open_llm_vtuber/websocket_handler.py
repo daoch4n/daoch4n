@@ -26,7 +26,6 @@ from .chat_history_manager import (
 from .config_manager.utils import scan_config_alts_directory, scan_bg_directory
 from .conversations.conversation_handler import (
     handle_conversation_trigger,
-    handle_group_interrupt,
     handle_individual_interrupt,
 )
 
@@ -274,15 +273,6 @@ class WebSocketHandler:
     async def handle_disconnect(self, client_uid: str) -> None:
         """Handle client disconnection"""
         group = self.chat_group_manager.get_client_group(client_uid)
-        if group:
-            await handle_group_interrupt(
-                group_id=group.group_id,
-                heard_response="",
-                current_conversation_tasks=self.current_conversation_tasks,
-                chat_group_manager=self.chat_group_manager,
-                client_contexts=self.client_contexts,
-                broadcast_to_group=self.broadcast_to_group,
-            )
 
         await handle_client_disconnect(
             client_uid=client_uid,
