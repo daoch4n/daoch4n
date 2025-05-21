@@ -192,40 +192,17 @@ class Live2dModel:
                         pass # Keep default 1.0
                 found_emotions[emotion_name_from_tag] = (expression_index, intensity)
 
-        # 2. Process emojis and their sequences for intensity
-        # For emojis, str_to_check does not need to be lowercased as emojis are specific.
-        for emoji_char, emotion_name_from_map in EMOJI_TO_EMOTION_NAME_MAP.items():
-            emotion_name_lower = emotion_name_from_map.lower()
-
-            # Only process if this emotion wasn't already found by a tag
-            if emotion_name_lower not in found_emotions:
-                if emotion_name_lower in self.emo_map: # Check if the emoji's emotion is valid for the model
-                    expression_index = self.emo_map[emotion_name_lower]
-                    
-                    best_match_count_for_current_emoji = 0
-                    # Escape the emoji character in case it contains regex special characters
-                    escaped_emoji_char = re.escape(emoji_char)
-                    # Pattern for one or more consecutive occurrences of the current emoji
-                    emoji_sequence_pattern = f"({escaped_emoji_char})+" 
-                    
-                    for match in re.finditer(emoji_sequence_pattern, str_to_check):
-                        # Calculate count based on the length of the matched sequence and the length of the emoji itself
-                        current_sequence_len = len(match.group(0)) // len(emoji_char) 
-                        if current_sequence_len > best_match_count_for_current_emoji:
-                            best_match_count_for_current_emoji = current_sequence_len
-                    
-                    if best_match_count_for_current_emoji > 0:
-                        intensity = 0.0
-                        if best_match_count_for_current_emoji == 1:
-                            intensity = 0.3
-                        elif best_match_count_for_current_emoji == 2:
-                            intensity = 0.6
-                        elif best_match_count_for_current_emoji >= 3:
-                            intensity = 0.9
-                        
-                        # The outer 'if emotion_name_lower not in found_emotions:' already ensures this.
-                        # So, we can directly assign.
-                        found_emotions[emotion_name_lower] = (expression_index, intensity)
+        # 2. Process emojis
+        # Iterate through the EMOJI_TO_EMOTION_NAME_MAP
+        # For emojis, str_to_check does not need to be lowercased as emojis are case-sensitive
+        for emoji, emotion_name_from_emoji_map in EMOJI_TO_EMOTION_NAME_MAP.items():
+            if emoji in str_to_check:
+                emotion_name_lower = emotion_name_from_emoji_map.lower() # Ensure consistency with emo_map keys
+                if emotion_name_lower in self.emo_map:
+                    # Add only if not already found by a tag (tags have precedence)
+                    if emotion_name_lower not in found_emotions:
+                        expression_index = self.emo_map[emotion_name_lower]
+                        found_emotions[emotion_name_lower] = (expression_index, 1.0) # Default intensity 1.0 for emojis
 
         # Convert the dictionary to the required list format
         expression_list = list(found_emotions.values())

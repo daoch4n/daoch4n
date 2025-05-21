@@ -261,13 +261,9 @@ class GeminiLiveAgent(AgentInterface):
             # Create a planning prompt that asks for emotion tags
             planning_prompt = (
                 f"The user said: \"{user_message}\"\n\n"
-                "You are in a planning phase. Plan your response. Indicate the emotional tone by including appropriate emojis directly in the planned text. "
-                "To indicate intensity in your plan, repeat the SAME emoji: "
-                "Use one emoji for subtle intensity (e.g., 😊 for slight joy). "
-                "Use two of the same emoji for medium intensity (e.g., 😊😊 for medium joy). "
-                "Use three of the same emoji for high intensity (e.g., 😊😊😊 for strong joy). "
-                "Do NOT use bracketed emotion tags like [joy]. Use emojis with repetition for intensity instead. "
-                "This planned text with emojis is for internal use to determine facial expressions based on the emoji and its repetition count. The final spoken response will be generated separately and should be natural, without these emojis being literally described or spoken."
+                "You are in a planning phase. Plan your response to the user. Indicate the emotional tone of your planned response by including appropriate emojis directly in the text (e.g., 😊 for joy, 😢 for sadness, 😮 for surprise). "
+                "Do NOT use bracketed emotion tags like [joy] or [sadness] in this planning phase. Use emojis instead. "
+                "This planned text with emojis is for internal use to determine facial expressions. The final spoken response to the user will be generated separately and should be natural and conversational, without these emojis being literally described or spoken."
             )
 
             # Send the planning prompt
@@ -790,14 +786,10 @@ class GeminiLiveAgent(AgentInterface):
             # Create a prompt that instructs the LLM to use emojis for emotion indication
             prompt = (
                 f"The user said: \"{user_message}\"\n\n"
-                "Respond naturally to the user. Indicate your emotional tone by including appropriate emojis directly in your text response. "
-                "To indicate intensity, repeat the SAME emoji: "
-                "Use one emoji for subtle intensity (e.g., 😊 for slight joy). "
-                "Use two of the same emoji for medium intensity (e.g., 😊😊 for medium joy). "
-                "Use three of the same emoji for high intensity (e.g., 😊😊😊 for strong joy). "
-                "Example: 'That's good news 😊', 'That's great news 😊😊', 'That's fantastic news 😊😊😊'.\n"
-                "Do NOT use bracketed emotion tags like [joy]. Use emojis with repetition for intensity instead. "
-                "CRITICAL INSTRUCTION: These emojis (and their repetitions) will control facial expressions. They should appear in the text transcript but MUST NOT be spoken aloud by the voice (e.g., for 'I am happy 😊', speak 'I am happy')."
+                "Respond naturally to the user. Indicate your emotional tone by including appropriate emojis directly in your text response (e.g., 😊 for joy, 😢 for sadness, 😮 for surprise). "
+                "Do NOT use bracketed emotion tags like [joy] or [sadness]. Use emojis instead. "
+                "CRITICAL INSTRUCTION: These emojis will be used to control facial expressions and animations. They should appear in the text transcript but should NOT be spoken aloud by the voice. "
+                "For example, if your response is 'I am happy 😊', your voice should only say 'I am happy'."
             )
 
             # Send the prompt

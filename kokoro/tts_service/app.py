@@ -23,6 +23,23 @@ logger.remove()
 logger.add(sys.stderr, level="INFO")
 logger.add("tts_service.log", rotation="10 MB", level="INFO")
 
+
+# Ensure the project root is in sys.path to allow importing open_llm_vtuber utilities
+project_root = Path(__file__).resolve().parent.parent.parent # kokoro/tts_service/app.py -> kokoro/tts_service -> kokoro -> project root
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+    logger.info(f"Added project root to sys.path: {project_root}")
+
+try:
+    from open_llm_vtuber.utils.mecab_utils import get_mecab_tagger
+    # We don't directly use GenericTagger type hint here from utils, fugashi will be imported by the util if needed.
+except ImportError as e:
+    logger.error(f"Could not import get_mecab_tagger from open_llm_vtuber.utils.mecab_utils. "
+                 f"Ensure the path is correct and the main project structure is accessible. Error: {e}")
+    # Fallback: The service might still run with its basic phoneme map if MeCab can't be initialized.
+    get_mecab_tagger = None # Ensure it's defined for later checks, even if it's None
+
+
 # Create Flask app
 app = Flask(__name__)
 
@@ -122,18 +139,26 @@ def text_to_phonemes(text: str) -> str:
     """
     global use_mecab
 
-    # Remove emotion tags from text
+    # Remove emotion tags from text as they are not part of phoneme conversion
     clean_text = re.sub(r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]', '', text).strip()
 
-    # Try to use MeCab for better phoneme conversion if available
+    # The `use_mecab` global flag determines the conversion strategy.
+    # The `use_mecab` global flag determines the conversion strategy.
+    # If True (default), it attempts to use MeCab (via Fugashi) for more accurate,
+    # context-aware phoneme conversion.
     if use_mecab:
-        try:
-            from fugashi import GenericTagger
-
-            # Create a tagger with the correct dictionary
+        tagger = None
+        if get_mecab_tagger: # Check if the utility function was imported successfully
             try:
-                tagger = GenericTagger('-d /var/lib/mecab/dic/ipadic-utf8')
+                logger.info("Attempting to initialize MeCab tagger via shared utility (get_mecab_tagger)...")
+                tagger = get_mecab_tagger() # Use the shared utility
+            except Exception as e_util: # Catch any unexpected error from the utility itself
+                logger.error(f"Error calling get_mecab_tagger utility: {e_util}")
+                tagger = None # Ensure tagger is None if util fails
 
+        if tagger:
+            logger.info("MeCab tagger initialized successfully via utility for text_to_phonemes.")
+            try:
                 # Convert text to phonemes using MeCab
                 phonemes = []
                 for word in tagger(clean_text):
@@ -154,14 +179,23 @@ def text_to_phonemes(text: str) -> str:
                             phonemes.append(PHONEME_MAP[char])
 
                 return ' '.join(phonemes)
-            except Exception as e:
-                logger.warning(f"Failed to use MeCab for phoneme conversion: {e}")
-                use_mecab = False  # Disable MeCab for future calls
-        except ImportError:
-            logger.warning("MeCab (fugashi) not available. Using fallback phoneme conversion.")
-            use_mecab = False  # Disable MeCab for future calls
+            except Exception as e_mecab_process:
+                logger.warning(f"MeCab processing failed with successfully initialized tagger: {e_mecab_process}. Disabling MeCab for future calls.")
+                use_mecab = False # Disable MeCab for future calls
+        else:
+            # This block is reached if get_mecab_tagger was None (import failed) or returned None (init failed)
+            logger.warning("MeCab tagger could not be initialized (utility failed or not imported). Disabling MeCab for this session.")
+            use_mecab = False # Disable MeCab for future calls if tagger is None
 
-    # Fallback to simple character-by-character conversion
+    # Fallback phoneme conversion (if use_mecab is False):
+    # This method is used if MeCab is not available or fails. It's a simple
+    # character-by-character or two-character sequence lookup using PHONEME_MAP.
+    # Limitations:
+    # - Does not understand context, leading to potentially incorrect pronunciations
+    #   (e.g., different readings of kanji based on context).
+    # - Cannot handle words or characters not present in PHONEME_MAP.
+    # - Less natural sounding compared to MeCab-based conversion.
+    # - Does not perform proper morphological analysis.
     phonemes = []
     i = 0
     while i < len(clean_text):
@@ -284,9 +318,15 @@ def initialize_tts():
         repo_id = tts_config["repo_id"]
 
         # Convert language code to Kokoro format (e.g., 'ja' to 'j')
-        lang_code = _convert_language_code("ja")  # Default to Japanese
+        # TODO: This service is primarily designed for Japanese ("ja").
+        # If broader language support is envisioned for this microservice in the future,
+        # the language code might need to become a configurable parameter,
+        # potentially passed via API request (if the pipeline can be reinitialized
+        # or supports multiple languages) or set via the service's overall configuration
+        # (e.g., environment variable or /config endpoint).
+        lang_code = _convert_language_code("ja")
 
-        logger.info(f"Initializing Kokoro TTS pipeline with device={device}, repo_id={repo_id}...")
+        logger.info(f"Initializing Kokoro TTS pipeline with lang_code={lang_code}, device={device}, repo_id={repo_id}...")
 
         # Initialize the pipeline with or without repo_id
         if repo_id:
@@ -403,10 +443,14 @@ def tts_endpoint():
         output_file = generate_speech(text, voice)
 
         # Return the audio file
+        # Consider adding 'as_attachment=True' if direct download is preferred by clients,
+        # though for an API, embedding might be more common.
         return send_file(output_file, mimetype='audio/wav')
     except Exception as e:
-        logger.error(f"Error in TTS endpoint: {e}")
-        return jsonify({"error": str(e)}), 500
+        # Log the full error for server-side diagnostics
+        logger.error(f"Error in TTS endpoint: {e}", exc_info=True)
+        # Return a generic error message to the client
+        return jsonify({"error": "An internal error occurred during speech generation."}), 500
 
 @app.route('/voices', methods=['GET'])
 def voices_endpoint():
@@ -416,23 +460,28 @@ def voices_endpoint():
         try:
             initialize_tts()
         except Exception as e:
-            logger.error(f"Error initializing TTS: {e}")
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Error initializing TTS for /voices endpoint: {e}", exc_info=True)
+            return jsonify({"error": "TTS engine initialization failed."}), 500
 
     # Get available voices
     try:
-        voices = list(tts_pipeline.model.voice_emb.keys())
+        if tts_pipeline and hasattr(tts_pipeline, 'model') and hasattr(tts_pipeline.model, 'voice_emb'):
+            voices = list(tts_pipeline.model.voice_emb.keys())
+            # Filter to only include Japanese female voices, as this service is primarily for Japanese.
+            # This could be made configurable if language support expands.
+            japanese_voices = [v for v in voices if v.startswith('jf_')]
+            default_voice = "jf_alpha" if "jf_alpha" in japanese_voices else (japanese_voices[0] if japanese_voices else None)
 
-        # Filter to only include Japanese female voices
-        japanese_voices = [v for v in voices if v.startswith('jf_')]
-
-        return jsonify({
-            "voices": japanese_voices,
-            "default": "jf_alpha"
-        })
+            return jsonify({
+                "voices": japanese_voices,
+                "default": default_voice
+            })
+        else:
+            logger.error("TTS pipeline or model not available for listing voices.")
+            return jsonify({"error": "TTS model not available."}), 500
     except Exception as e:
-        logger.error(f"Error getting voices: {e}")
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Error getting voices: {e}", exc_info=True)
+        return jsonify({"error": "Could not retrieve voice list."}), 500
 
 @app.route('/health', methods=['GET'])
 def health_endpoint():
@@ -465,16 +514,22 @@ def config_endpoint():
                 "config": tts_config
             })
         except Exception as e:
-            logger.error(f"Error updating configuration: {e}")
-            return jsonify({"error": str(e)}), 500
+            logger.error(f"Error updating configuration: {e}", exc_info=True)
+            return jsonify({"error": "Failed to update configuration."}), 500
 
 if __name__ == '__main__':
-    # Initialize TTS
+    # Initialize TTS at startup
     try:
         initialize_tts()
     except Exception as e:
-        logger.error(f"Failed to initialize TTS: {e}")
+        # Error already logged by initialize_tts()
+        logger.critical(f"Service failed to initialize TTS at startup: {e}. Exiting.")
         sys.exit(1)
 
     # Run the Flask app
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    # Note: For production, use a proper WSGI server (e.g., Gunicorn) instead of Flask's built-in server.
+    # Debug mode should be turned off in production. Port and host can be configured via environment variables.
+    is_debug_mode = os.environ.get("FLASK_DEBUG", "True").lower() == "true"
+    server_port = int(os.environ.get("TTS_SERVICE_PORT", 5000))
+    logger.info(f"Starting Flask app. Debug mode: {is_debug_mode}, Port: {server_port}")
+    app.run(host='0.0.0.0', port=server_port, debug=is_debug_mode)

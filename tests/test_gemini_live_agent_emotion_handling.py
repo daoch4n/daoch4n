@@ -23,9 +23,10 @@ class TestGeminiLiveAgentEmojiHandling(unittest.IsolatedAsyncioTestCase):
         pathlib.Path(self.cache_dir).mkdir(exist_ok=True)
 
         self.mock_live2d_model = MagicMock(spec=Live2dModel)
-        # Default mock, can be overridden in specific tests
-        self.mock_live2d_model.extract_emotion = MagicMock(return_value=[(0, 0.3)]) # Default to single joy emoji
-        self.mock_live2d_model.get_interpolated_expression = MagicMock(return_value={"expression_index": 0, "intensity": 0.3})
+        # Configure extract_emotion to return a list of (index, intensity) tuples
+        # For "😊" (joy), assuming joy is expression index 0.
+        self.mock_live2d_model.extract_emotion = MagicMock(return_value=[(0, 1.0)]) 
+        self.mock_live2d_model.get_interpolated_expression = MagicMock(return_value={"expression_index": 0, "intensity": 1.0})
 
         self.base_config = MagicMock(spec=GeminiLiveConfig)
         self.base_config.api_key = "test_api_key"
@@ -79,12 +80,8 @@ class TestGeminiLiveAgentEmojiHandling(unittest.IsolatedAsyncioTestCase):
         agent.history_history_uid = "test_hist_single"
 
         # --- Test Data ---
-        llm_response_text_with_emoji = "Hello world 😊😊" # Medium joy
-        
-        # Update mock for this specific test case based on "😊😊" -> joy, intensity 0.6
-        self.mock_live2d_model.extract_emotion.return_value = [(0, 0.6)] # Joy, index 0
-        self.mock_live2d_model.get_interpolated_expression.return_value = {"expression_index": 0, "intensity": 0.6}
-
+        llm_response_text_with_emoji = "Hello world 😊"
+        # joy_emotion_name = EMOJI_TO_EMOTION_NAME_MAP["😊"] # "joy"
 
         # --- Mock Gemini Client and Session ---
         mock_client_instance = MockGenaiClient.return_value
@@ -156,14 +153,11 @@ class TestGeminiLiveAgentEmojiHandling(unittest.IsolatedAsyncioTestCase):
         agent.history_history_uid = "test_hist_dual"
 
         # --- Test Data ---
-        planning_response_text_with_emoji = "Okay, I will help 😊😊😊" # High joy
+        planning_response_text_with_emoji = "Okay, I will help 😊" # joy
         clean_response_text = "Okay, I will help"
-        
-        # Update mock for this specific test case's planning response
-        # extract_emotion for "Okay, I will help 😊😊😊" should result in [(0, 0.9)] (joy index 0)
-        self.mock_live2d_model.extract_emotion.return_value = [(0, 0.9)]
-        self.mock_live2d_model.get_interpolated_expression.return_value = {"expression_index": 0, "intensity": 0.9}
-        expected_actions = Actions(expressions=[{"expression_index": 0, "intensity": 0.9}])
+        # extract_emotion for "Okay, I will help 😊" should result in [(0, 1.0)] (joy index 0)
+        # get_interpolated_expression for (0, 1.0) should result in {"expression_index": 0, "intensity": 1.0}
+        expected_actions = Actions(expressions=[{"expression_index": 0, "intensity": 1.0}])
 
         # --- Mock _extract_emotions_from_planning ---
         agent._extract_emotions_from_planning = AsyncMock(return_value=planning_response_text_with_emoji)
@@ -221,7 +215,7 @@ class TestGeminiLiveAgentEmojiHandling(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(audio_output_result.transcript, clean_response_text)
         
         self.assertEqual(audio_output_result.actions.expressions, expected_actions.expressions)
-        self.mock_live2d_model.get_interpolated_expression.assert_called_once_with(0, 0.9)
+        self.mock_live2d_model.get_interpolated_expression.assert_called_once_with(0, 1.0)
 
 
 if __name__ == '__main__':

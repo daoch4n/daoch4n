@@ -1,9 +1,21 @@
 #!/usr/bin/env python3
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
 """
-Test script for the Kokoro-82M TTS integration.
+Test script for direct Kokoro-82M TTS integration using KokoroWrapper.
 
-This script tests the Kokoro TTS engine by generating speech for a sample text
-and playing it back.
+This script is designed to test the functionality of the Kokoro TTS engine when
+integrated directly into the application via the `KokoroWrapper` class (obtained
+from the `TTSFactory` with engine type "kokoro_tts").
+
+It is distinct from `tts_service/test_service.py`, which tests the Kokoro TTS
+microservice. This script focuses on the legacy/alternative direct integration
+method, useful for development, specific testing scenarios, or when the
+microservice is not used.
+
+The script loads configuration from `conf.yaml`, allows overriding parameters
+via command-line arguments, generates speech for a sample text, and optionally
+attempts to play it back.
 """
 
 import os
@@ -20,197 +32,186 @@ from open_llm_vtuber.tts.tts_factory import TTSFactory
 
 def load_config(config_path):
     """Load configuration from a YAML file."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return config
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f)
+        return config
+    except FileNotFoundError:
+        print(f"Error: Configuration file not found at {config_path}")
+        sys.exit(1)
+    except yaml.YAMLError as e:
+        print(f"Error parsing YAML configuration file {config_path}: {e}")
+        sys.exit(1)
 
 
-def test_kokoro_tts(config_path=None, text=None, output_path=None, play_audio=True):
+def test_kokoro_tts(tts_params: dict, text_to_synthesize: str, output_file_path: str, play_audio_flag: bool):
     """
-    Test the Kokoro TTS engine.
+    Tests the Kokoro TTS engine using direct integration (KokoroWrapper).
 
     Args:
-        config_path: Path to the configuration file
-        text: Text to synthesize (if None, uses a default test text)
-        output_path: Path to save the generated audio file (if None, uses a default path)
-        play_audio: Whether to attempt to play the audio after generation
+        tts_params: Dictionary containing parameters for TTS engine initialization
+                    (voice, language, device, cache_dir, etc.).
+        text_to_synthesize: Text to synthesize.
+        output_file_path: Path to save the generated audio file.
+        play_audio_flag: Whether to attempt to play the audio after generation.
     """
-    # Ensure cache directory exists
-    cache_dir = "cache"
-    if not os.path.exists(cache_dir):
-        os.makedirs(cache_dir)
-        print(f"Created cache directory: {cache_dir}")
+    # Ensure cache directory exists (used by KokoroWrapper if not overridden)
+    default_cache_dir = tts_params.get("cache_dir", "cache")
+    if not os.path.exists(default_cache_dir):
+        try:
+            os.makedirs(default_cache_dir)
+            print(f"Created cache directory: {default_cache_dir}")
+        except OSError as e:
+            print(f"Warning: Could not create cache directory {default_cache_dir}: {e}. "
+                  "Kokoro TTS might fail if caching is essential and paths are not writable.")
 
-    # Default test text with emotion tags
-    if text is None:
-        text = (
-            "Hello, I'm Daoko! [joy:0.8] "
-            "I'm so happy to meet you! [joy:0.9] "
-            "Sometimes I feel a bit sad though. [sadness:0.6] "
-            "And occasionally I get angry too! [anger:0.7] "
-            "But most of the time, I'm just neutral. [neutral] "
-            "Oh! That surprised me! [surprise:0.8] "
-            "Anyway, I hope we can be friends! [joy:0.7]"
-        )
-
-    # Load configuration
-    if config_path is None:
-        config_path = os.path.join(
-            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-            "conf.yaml"
-        )
-
-    config = load_config(config_path)
-
-    # Extract the TTS configuration from the conf.yaml file
-    tts_config = {}
-    if "tts_config" in config and "kokoro_tts" in config["tts_config"]:
-        # Extract the Kokoro TTS configuration
-        kokoro_config = config["tts_config"]["kokoro_tts"]
-        tts_config = {
-            "TTS_ENGINE": "kokoro_tts",
-            "TTS_VOICE": kokoro_config.get("voice"),
-            "TTS_LANGUAGE": kokoro_config.get("language"),
-            "TTS_DEVICE": kokoro_config.get("device"),
-            "TTS_CACHE_DIR": kokoro_config.get("cache_dir"),
-            "TTS_SAMPLE_RATE": kokoro_config.get("sample_rate"),
-            "TTS_OUTPUT_FORMAT": kokoro_config.get("output_format"),
-            "TTS_EMOTION_MAPPING": kokoro_config.get("emotion_mapping"),
-        }
-    else:
-        # Fallback to the old format
-        tts_config = config.get("TTS_CONFIG", {})
-
-    # Create the TTS engine
-    kwargs = {
-        "engine_type": tts_config.get("TTS_ENGINE", "kokoro_tts"),
-        "voice": voice or tts_config.get("TTS_VOICE", "jf_alpha"),  # Use the specified voice or the one from config
-        "language": tts_config.get("TTS_LANGUAGE", "ja"),  # Default to Japanese for Daoko
-        "device": "cpu",  # Force CPU mode to avoid CUDA issues
-        "cache_dir": tts_config.get("TTS_CACHE_DIR", "cache"),
-        "sample_rate": tts_config.get("TTS_SAMPLE_RATE", 24000),
-        "output_format": tts_config.get("TTS_OUTPUT_FORMAT", "wav"),
-        "emotion_mapping": tts_config.get("TTS_EMOTION_MAPPING", None),
+    # Construct kwargs for TTSFactory, ensuring 'engine_type' is set for KokoroWrapper
+    factory_kwargs = {
+        "engine_type": "kokoro_tts", # Crucial for selecting KokoroWrapper
+        "voice": tts_params.get("voice", "jf_alpha"),
+        "language": tts_params.get("language", "ja"),
+        "device": tts_params.get("device", "cpu"), # Default to CPU for tests; can be overridden by conf.yaml via tts_params
+        "cache_dir": tts_params.get("cache_dir", "cache"),
+        "sample_rate": tts_params.get("sample_rate", 24000),
+        "output_format": tts_params.get("output_format", "wav"),
+        "emotion_mapping": tts_params.get("emotion_mapping"), # Will be None if not in tts_params
+        "repo_id": tts_params.get("repo_id") # Will be None if not in tts_params
     }
 
-    # Only add repo_id if it's specified in the config
-    if "TTS_REPO_ID" in tts_config:
-        kwargs["repo_id"] = tts_config["TTS_REPO_ID"]
+    print("Initializing Kokoro TTS engine (direct integration via KokoroWrapper) with parameters:")
+    for key, value in factory_kwargs.items():
+        if value is not None: # Don't print params that are not set (like repo_id if None)
+             print(f"  {key}: {value}")
 
-    # Print the configuration for debugging
-    print(f"Using TTS configuration:")
-    print(f"  Engine: {kwargs['engine_type']}")
-    print(f"  Voice: {kwargs['voice']}")
-    print(f"  Language: {kwargs['language']}")
-    print(f"  Device: {kwargs['device']}")
-    print(f"  Cache directory: {kwargs['cache_dir']}")
-
-    # Create the TTS engine
     try:
-        tts_engine = TTSFactory.get_tts_engine(**kwargs)
+        tts_engine = TTSFactory.get_tts_engine(**factory_kwargs)
     except Exception as e:
-        print(f"Error creating TTS engine: {e}")
-        raise
+        print(f"Error creating TTS engine (KokoroWrapper): {e}")
+        print("Please ensure that Kokoro TTS (direct integration) is correctly set up,")
+        print("including MeCab and any necessary model files if not using default repo.")
+        print("Refer to `docs/kokoro_tts_setup.md` for direct integration guidance.")
+        raise # Re-raise the exception to fail the test
 
-    # Generate speech
-    print(f"Generating speech for text: {text}")
-    output_file = tts_engine.generate_audio(text, output_path or "test_kokoro")
+    print(f"\nGenerating speech for text: \"{text_to_synthesize[:100]}...\"")
+    try:
+        generated_file = tts_engine.generate_audio(text_to_synthesize, output_file_path)
+        print(f"Generated audio file: {generated_file}")
+    except Exception as e:
+        print(f"Error during speech generation: {e}")
+        raise # Re-raise the exception to fail the test
 
-    print(f"Generated audio file: {output_file}")
-
-    # Print information about the generated audio file
     print(f"\nAudio generation successful!")
-    print(f"Generated audio file: {output_file}")
+    print(f"Generated audio file: {generated_file}")
     print(f"You can play this file with any audio player.")
 
-    # Play the audio if requested
-    if play_audio:
-        if not os.path.exists(output_file):
-            print(f"Error: Audio file {output_file} does not exist.")
+    if play_audio_flag:
+        if not os.path.exists(generated_file):
+            print(f"Error: Audio file {generated_file} does not exist (should not happen).")
         else:
             print("\nAttempting to play the audio...")
-            print(f"Please play the audio file manually: {output_file}")
+            # Platform-dependent audio playback is complex.
+            # For automated tests, usually skip playback or use a library that handles it.
+            # For manual testing, this print is often sufficient.
+            print(f"To play the audio, please open the file manually: {generated_file}")
+            # Example for macOS: subprocess.call(["afplay", generated_file])
+            # Example for Linux: subprocess.call(["xdg-open", generated_file])
+            # Example for Windows: os.startfile(generated_file)
 
-    return output_file
-
-
-def list_available_voices():
-    """List all available voices in the Kokoro model."""
-    print("Available voices in Kokoro-82M model:")
-    print("\nJapanese Female Voices (Recommended for Daoko):")
-    print("- jf_alpha (Japanese female voice - recommended for Daoko)")
-    print("- jf_gongitsune (Japanese female voice)")
-    print("- jf_nezumi (Japanese female voice)")
-    print("- jf_tebukuro (Japanese female voice)")
-    print("\nChinese Female Voices:")
-    print("- zf_xiaobei (Chinese female voice)")
-    print("- zf_xiaoni (Chinese female voice)")
-    print("- zf_xiaoxiao (Chinese female voice)")
-    print("- zf_xiaoyi (Chinese female voice)")
-    print("\nNote: These are the only voices available in this installation.")
+    return generated_file
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Test the Kokoro TTS engine")
-    parser.add_argument("--config", help="Path to the configuration file")
-    parser.add_argument("--text", help="Text to synthesize")
-    parser.add_argument("--output", help="Path to save the generated audio file")
-    parser.add_argument("--no-play", action="store_true", help="Don't attempt to play the audio")
-    parser.add_argument("--voice", help="Voice to use (e.g., jf_alpha, jf_gongitsune, jf_nezumi, jf_tebukuro, zf_xiaobei)")
-    parser.add_argument("--list-voices", action="store_true", help="List available voices")
+    parser = argparse.ArgumentParser(
+        description="Test direct Kokoro TTS integration (KokoroWrapper).",
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        "--config",
+        default=os.path.join(Path(__file__).resolve().parent.parent, "conf.yaml"),
+        help="Path to the main configuration file (conf.yaml)."
+    )
+    parser.add_argument(
+        "--text",
+        default=(
+            "こんにちは、私は音読さんです。[joy:0.8] "
+            "あなたに会えてとても嬉しいです。[joy:0.9] "
+            "時々、少し悲しい気持ちになることもあります。[sadness:0.6] "
+            "でも、ほとんどの場合は元気です。[neutral] "
+            "よろしくお願いします！[joy:0.7]"
+        ),
+        help="Text to synthesize."
+    )
+    parser.add_argument(
+        "--output",
+        default=os.path.join("cache", "test_kokoro_direct_output.wav"),
+        help="Path to save the generated audio file."
+    )
+    parser.add_argument(
+        "--no-play",
+        action="store_true",
+        help="Don't attempt to guide manual playback of the audio."
+    )
+    parser.add_argument(
+        "--voice",
+        type=str,
+        default=None, # Will use value from conf.yaml if not specified
+        help="Specific Kokoro voice to use (e.g., jf_alpha). Overrides conf.yaml."
+    )
+    parser.add_argument(
+        "--device",
+        type=str,
+        default=None, # Will use value from conf.yaml, or 'cpu' as per test_kokoro_tts default
+        help="Device to use ('cpu' or 'cuda'). Overrides conf.yaml."
+    )
+    parser.add_argument(
+        "--list-voices",
+        action="store_true",
+        help="Show information about available voices (points to documentation)."
+    )
 
     args = parser.parse_args()
 
     if args.list_voices:
-        list_available_voices()
+        print("Voice selection for Kokoro TTS (direct integration) depends on the model used.")
+        print("Commonly available voices for the default Kokoro-82M model include:")
+        print("  Japanese Female: jf_alpha, jf_gongitsune, jf_nezumi, jf_tebukuro")
+        print("  Chinese Female: zf_xiaobei, zf_xiaoni, zf_xiaoxiao, zf_xiaoyi")
+        print("Please refer to `docs/kokoro_tts_integration.md` or the model's documentation for a complete and up-to-date list.")
         sys.exit(0)
 
-    # Set up the text and output path
-    text = args.text
-    output = args.output
-
-    # If voice is specified, we'll pass it directly to the TTS engine
-    voice = args.voice
-    if voice:
-        print(f"Using voice: {voice}")
-
-    # Load the configuration
-    config_path = args.config
-
-    # Create a custom configuration with the specified voice
-    custom_config = None
-    if voice:
-        if not config_path:
-            config_path = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                "conf.yaml"
-            )
-
-        # Load the configuration
-        custom_config = load_config(config_path)
-
-        # Update the voice in the configuration
-        if "tts_config" in custom_config and "kokoro_tts" in custom_config["tts_config"]:
-            custom_config["tts_config"]["kokoro_tts"]["voice"] = voice
-        elif "TTS_CONFIG" in custom_config:
-            # Fallback to the old format
-            custom_config["TTS_CONFIG"]["TTS_VOICE"] = voice
-
-    # Run the test with the custom configuration
-    if custom_config:
-        # Create a temporary configuration file
-        temp_config_path = "temp_kokoro_config.yaml"
-        with open(temp_config_path, 'w') as f:
-            yaml.dump(custom_config, f)
-
-        # Use the temporary configuration file
-        test_kokoro_tts(temp_config_path, text, output, not args.no_play)
-
-        # Clean up the temporary file
-        try:
-            os.remove(temp_config_path)
-        except:
-            pass
+    # Load base configuration from conf.yaml
+    main_config = load_config(args.config)
+    kokoro_specific_config = {}
+    if main_config and "tts_config" in main_config and "kokoro_tts" in main_config["tts_config"]:
+        kokoro_specific_config = main_config["tts_config"]["kokoro_tts"]
     else:
-        # Use the original configuration file
-        test_kokoro_tts(config_path, text, output, not args.no_play)
+        print(f"Warning: 'tts_config.kokoro_tts' section not found in {args.config}. Using defaults.")
+
+    # Prepare parameters for test_kokoro_tts, allowing CLI args to override conf.yaml values
+    # Default values for parameters not in conf.yaml or overridden are handled inside test_kokoro_tts/TTSFactory.
+    tts_params_for_test = {
+        "voice": args.voice or kokoro_specific_config.get("voice"),
+        "language": kokoro_specific_config.get("language"), # No direct CLI override, uses conf or default
+        "device": args.device or kokoro_specific_config.get("device"), # CLI --device overrides conf
+        "cache_dir": kokoro_specific_config.get("cache_dir"),
+        "sample_rate": kokoro_specific_config.get("sample_rate"),
+        "output_format": kokoro_specific_config.get("output_format"),
+        "emotion_mapping": kokoro_specific_config.get("emotion_mapping"),
+        "repo_id": kokoro_specific_config.get("repo_id")
+    }
+    # Filter out None values if we only want to pass explicitly set overrides or conf values
+    tts_params_for_test = {k: v for k, v in tts_params_for_test.items() if v is not None}
+
+
+    # Ensure output directory exists
+    output_dir = Path(args.output).parent
+    if not output_dir.exists():
+        print(f"Creating output directory: {output_dir}")
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    test_kokoro_tts(
+        tts_params=tts_params_for_test,
+        text_to_synthesize=args.text,
+        output_file_path=args.output,
+        play_audio_flag=not args.no_play
+    )
