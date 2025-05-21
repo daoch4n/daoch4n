@@ -480,6 +480,9 @@ class ServiceContext:
         """
         logger.debug(f"constructing persona_prompt: '''{persona_prompt}'''")
 
+        # Remove group_conversation_prompt if it exists, as it's no longer used
+        self.system_config.tool_prompts.pop("group_conversation_prompt", None)
+
         for prompt_name, prompt_file in self.system_config.tool_prompts.items():
             prompt_content = prompt_loader.load_util(prompt_file)
 
