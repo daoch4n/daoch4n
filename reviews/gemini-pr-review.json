@@ -1,13 +1,23 @@
 {
   "metadata": {
-    "pr_number": 3,
+    "pr_number": 4,
     "repo": "daoch4n/daoch4n",
-    "title": "feat: Add emoji repetition for intensity and update Live2D handling",
-    "timestamp_utc": "2025-05-21T13:57:48.675495+00:00",
+    "title": "Feat/remove group chat",
+    "timestamp_utc": "2025-05-21T15:34:20.951333+00:00",
     "review_tool": "I'm your Gemini AI Reviewer",
     "model_used": "gemini-2.5-flash-preview-04-17",
     "api_key_used": "primary",
     "rate_limited": false
   },
-  "review_comments": []
+  "review_comments": [
+    {
+      "file_path": "src/open_llm_vtuber/service_context.py",
+      "github_diff_position": 1,
+      "comment_text_md": "**Note: I couldn't precisely position this comment in the diff, but I think it's important feedback:**\n\n**My Confidence: Medium**\n\nThis change removes the explicit skip for the `group_conversation_prompt`. This means if `group_conversation_prompt` is still listed in `self.system_config.tool_prompts`, its content will now be loaded and appended to the system prompt.\n\nGiven the PR title is \"Feat/remove group chat\", is it intended for this prompt content to be included? If the prompt contains instructions specific to group conversations, including it in the general system prompt might lead to unexpected behavior or confusion for the agent in a 1-on-1 chat.\n\nConsider either:\n1. Removing `group_conversation_prompt` from `self.system_config.tool_prompts` entirely if it's no longer needed.\n2. Ensuring the content of `group_conversation_prompt` is generic enough to be included in the main system prompt, or removing the file if it's group-specific.",
+      "ai_confidence": "Medium",
+      "detected_severity_heuristic": "low",
+      "detected_category_heuristic": "general",
+      "invalidPosition": true
+    }
+  ]
 }
