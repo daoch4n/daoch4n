@@ -1,22 +1,13 @@
 {
   "metadata": {
-    "pr_number": 2,
+    "pr_number": 3,
     "repo": "daoch4n/daoch4n",
-    "title": "I've refactored the Kokoro TTS integration for clarity and structure.",
-    "timestamp_utc": "2025-05-21T12:06:33.315626+00:00",
+    "title": "feat: Add emoji repetition for intensity and update Live2D handling",
+    "timestamp_utc": "2025-05-21T13:57:48.675495+00:00",
     "review_tool": "I'm your Gemini AI Reviewer",
     "model_used": "gemini-2.5-flash-preview-04-17",
     "api_key_used": "primary",
     "rate_limited": false
   },
-  "review_comments": [
-    {
-      "file_path": "kokoro/tts_service/app.py",
-      "github_diff_position": 49,
-      "comment_text_md": "**My Confidence: High**\n\nThis comment is duplicated on the previous line. You can remove one of them.",
-      "ai_confidence": "High",
-      "detected_severity_heuristic": "medium",
-      "detected_category_heuristic": "refactoring/design"
-    }
-  ]
+  "review_comments": []
 }
