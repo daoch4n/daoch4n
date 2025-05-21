@@ -155,6 +155,39 @@ The Gemini Live Agent implementation includes the following key components for h
    final_clean_transcript = self._remove_emotion_tags(clean_transcript)
    ```
 
+## TTS System Interaction with Emotion Tags
+
+Beyond preventing the LLM from vocalizing emotion tags, it's important to understand how these tags might be interpreted or used by the Text-to-Speech (TTS) system itself. The behavior can vary significantly depending on the TTS engine and integration method.
+
+### Kokoro TTS Microservice
+
+The Kokoro TTS microservice (detailed in `docs/kokoro_tts_integration.md`) has specific logic to handle emotion tags:
+
+-   **Tag Parsing:** It parses the first `[emotion:intensity]` tag from the input text.
+-   **Speed Adjustment:** The primary effect is on **speech speed**. The service uses a configurable `emotion_mapping` (e.g., `joy: 1.2`, `sadness: 0.8`) to determine a speed multiplier based on the detected emotion. The intensity value from the tag (0.0 to 1.0) scales this effect, with a threshold of 0.3 below which no speed change occurs.
+-   **Tag Removal:** All emotion tags are removed from the text before it is sent to the underlying Kokoro engine for synthesis.
+-   **No Direct Style/Pitch Change:** The microservice currently does not use emotion tags to change the voice style (e.g., a "happy voice") or pitch directly. Any such nuances would depend on the base characteristics of the selected Kokoro voice.
+
+### Kokoro TTS Direct Integration (`KokoroWrapper`)
+
+When using Kokoro TTS via direct integration with `KokoroWrapper` (detailed in `docs/kokoro_tts_setup.md`):
+
+-   **No Wrapper-Level Processing:** The `KokoroWrapper` itself **does not parse emotion tags or modify speech parameters** like speed or pitch based on them.
+-   **Tags Passed to Engine:** The input text, including any emotion tags, is passed directly to the underlying Kokoro TTS engine.
+-   **Engine/Voice Dependent Behavior:** Any effect the tags have on speech output depends entirely on the **native capabilities of the Kokoro TTS engine and the specific voice being used.** Some voices might be designed to interpret specific embedded tags or SSML-like syntax, but this is not managed or standardized by the `KokoroWrapper`.
+-   **No `emotion_mapping` Use:** The `emotion_mapping` in `conf.yaml` (if defined for `kokoro_tts` direct integration) is not used by `KokoroWrapper` for parameter adjustments in the same way the microservice uses its own `emotion_mapping`.
+
+For explicit control over speech speed based on emotion tags when using Kokoro, the TTS microservice is the recommended approach.
+
+### Other TTS Systems
+
+For other TTS engines integrated with the application, their handling of embedded emotion tags will vary:
+- Some may ignore them completely.
+- Some may have their own syntax for style or prosody control (e.g., SSML).
+- Some might be designed to interpret `[emotion:intensity]` tags if explicitly documented for that engine.
+
+Always refer to the specific documentation for the active TTS engine to understand how it interacts with text containing emotion tags. The primary goal of the emotion tag removal strategies described in this document is to prevent the *Language Model (LLM)* from speaking the tags, ensuring the TTS system receives text that is either clean or contains tags it is specifically designed to process.
+
 ## Troubleshooting
 
 If you still experience issues with emotion tags being pronounced:

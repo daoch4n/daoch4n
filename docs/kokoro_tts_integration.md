@@ -1,10 +1,16 @@
 # Kokoro-82M TTS Integration with Live2D Character (Daoko)
 
-This document describes the integration of the Kokoro-82M speech synthesis model with the Live2D character (Daoko) in the project.
+This document describes the integration of the Kokoro-82M speech synthesis model with the Live2D character (Daoko) in the project, primarily focusing on the **recommended TTS Microservice approach**.
 
-> **Note**: We have moved to a microservice architecture for the Kokoro TTS integration. Please see the [TTS Service Integration](tts_service_integration.md) document for the latest approach.
+The Kokoro-82M model is an open-weight TTS model. This integration allows Daoko to speak using the Kokoro-82M voice model, with appropriate emotional inflections.
 
-## Overview
+For details on direct integration (legacy/alternative method), refer to the [Kokoro TTS Setup Guide](kokoro_tts_setup.md).
+
+## Overview of Integration Methods
+1.  **TTS Microservice (Recommended):** Involves running Kokoro TTS as a separate service. The main application communicates with this service. This is the preferred method for stability and ease of use.
+2.  **Direct Integration (Legacy/Alternative):** Involves integrating the Kokoro TTS library directly into the main application. Setup and details for this method are covered in [Kokoro TTS Setup Guide](kokoro_tts_setup.md).
+
+This document will now focus on the **TTS Microservice** integration.
 
 The Kokoro-82M model is an open-weight TTS model with 82 million parameters. Despite its lightweight architecture, it delivers comparable quality to larger models while being significantly faster and more cost-efficient. With Apache-licensed weights, Kokoro can be deployed anywhere from production environments to personal projects.
 
@@ -18,44 +24,64 @@ This integration allows Daoko to speak using the Kokoro-82M voice model, with ap
 - Support for multiple languages (primarily English)
 - Efficient performance suitable for real-time applications
 
-## Installation
+## TTS Microservice: Installation and Setup
 
-### Prerequisites
+This section details how to set up and run the Kokoro TTS microservice.
 
-- Git LFS (Large File Storage)
-- Python 3.8+
-- PyTorch
-- Kokoro Python package
+### Prerequisites for Running the Microservice
 
-### Installation Steps
+1.  **Docker and Docker Compose:** Required to build and run the microservice. Installation instructions can be found on the official Docker website.
+2.  **Kokoro-82M Model Files:** The microservice needs access to the Kokoro-82M model files.
+    *   Ensure Git LFS is installed:
+        ```bash
+        sudo apt-get update && sudo apt-get install -y git-lfs
+        git lfs install
+        ```
+    *   The model files should be located at `~/alltalk_tts/models/kokoro/`. If you have downloaded them via Hugging Face caching to a different location, you may need to create symbolic links. The `docs/kokoro_tts_setup.md` document refers to a `./setup_kokoro_symlink.sh` script that can help manage this by linking from the Hugging Face cache to the expected directory. It's recommended to ensure the model files are correctly placed or linked at `~/alltalk_tts/models/kokoro/` for the microservice to access them.
 
-1. Install Git LFS:
-   ```bash
-   sudo apt-get update && sudo apt-get install -y git-lfs
-   git lfs install
-   ```
+### Running the TTS Microservice
 
-2. Clone the Kokoro-82M model:
-   ```bash
-   mkdir -p ~/alltalk_tts/models/kokoro
-   cd ~/alltalk_tts/models/kokoro
-   git lfs clone https://huggingface.co/hexgrad/Kokoro-82M .
-   ```
+1.  **Start the TTS Service:**
+    A script is provided to manage the TTS service:
+    ```bash
+    ./start_tts_service.sh
+    ```
+    This script typically handles building the Docker image (if not already built) and running the service using `docker-compose`. Refer to the script's contents or `tts_service/docker-compose.yml` for more details if needed.
 
-3. Install the Kokoro Python package:
-   ```bash
-   pip install kokoro
-   ```
+## TTS Microservice: Configuration
 
-## Configuration
+To use the TTS microservice, the main application needs to be configured to communicate with it. This is typically done in the main application's configuration file (e.g., `conf.yaml`).
 
-> **Note**: The configuration has changed with the microservice approach. Please see the [TTS Service Integration](tts_service_integration.md) document for the latest configuration.
+### Configuring the Main Application to Use the TTS Microservice
 
-### Legacy Configuration (Direct Integration)
+Set the following parameters in your application's configuration:
+```yaml
+tts_config:
+  tts_model: 'tts_service' # Specifies that the microservice should be used
 
-The direct Kokoro TTS integration is configured in the main `conf.yaml` file.
+  # TTS Service configuration (client-side)
+  tts_service:
+    base_url: "http://localhost:5000"  # URL of the running TTS Microservice
+    # Other client-specific parameters can be added here if needed
+```
 
-### Key Configuration Parameters
+---
+
+## Legacy / Alternative: Direct Integration
+
+For information on directly integrating the Kokoro TTS library into the main application (without a separate microservice), please refer to the [Kokoro TTS Setup Guide](kokoro_tts_setup.md). This guide covers:
+- Detailed installation of necessary Python packages (`kokoro`, `misaki`, etc.)
+- System dependencies for direct integration
+- Configuration within the main application's `conf.yaml` for direct use (e.g., setting `tts_model: 'kokoro_tts'`)
+- Usage patterns for direct library calls.
+
+The following sections provide a brief overview of legacy configuration and usage for quick reference.
+
+### Legacy Configuration (Direct Integration Overview)
+
+When Kokoro TTS is integrated directly, it's configured in the main `conf.yaml` file.
+
+**Key Configuration Parameters (for Direct Integration):**
 
 - `tts_model`: Set to "kokoro_tts" to use the Kokoro TTS engine directly
 - `voice`: The voice to use (recommended: "jf_alpha" for Daoko)
@@ -86,70 +112,42 @@ tts_config:
       smirk: "happy"
 ```
 
-### New Configuration (Microservice Approach)
 
-The new TTS Service microservice approach is configured as follows:
+(Details on dependencies for direct integration can be found in [Kokoro TTS Setup Guide](kokoro_tts_setup.md).)
 
-```yaml
-tts_config:
-  tts_model: 'tts_service'
+## TTS Microservice: Usage
 
-  # TTS Service configuration (microservice for Japanese TTS)
-  tts_service:
-    base_url: "http://localhost:5000"  # URL of the TTS Service
-```
+Using the TTS microservice involves two main steps:
 
-### Dependencies
+1.  **Ensure the TTS Microservice is Running:**
+    As described in the "Installation and Setup" section, use:
+    ```bash
+    ./start_tts_service.sh
+    ```
 
-The Kokoro TTS integration requires the following dependencies:
+2.  **Configure the Main Application:**
+    Ensure your main application's configuration points to the TTS microservice as shown in the "Configuration" section (i.e., `tts_model: 'tts_service'` and the correct `base_url`).
 
-1. **Python Packages**:
-   - `kokoro` - The main Kokoro TTS package
-   - `misaki` - Japanese tokenizer for Kokoro
-   - `pyopenjtalk` - Japanese text processing
-   - `fugashi[unidic-lite]` - Japanese morphological analyzer with dictionary
-   - `unidic-lite` - Japanese dictionary for MeCab
-   - `jaconv` - Japanese text conversion
-   - `mojimoji` - Japanese character conversion
-   - `spacy` - Text processing
+The main application will then automatically route TTS requests to the microservice.
 
-2. **System Dependencies**:
-   - `mecab` - Japanese morphological analyzer
-   - `libmecab-dev` - MeCab development files
-   - `mecab-ipadic-utf8` - MeCab dictionary
+---
 
-These dependencies are automatically installed when you run the `test_tts.sh` script or the `fix_kokoro_env.sh` script.
+### Legacy Usage (Direct Integration Overview)
 
-## Usage
+To use the Kokoro TTS engine directly with Daoko (legacy method), set the TTS engine to "kokoro_tts" in your configuration file and provide the necessary parameters as detailed in [Kokoro TTS Setup Guide](kokoro_tts_setup.md). The main application then calls the Kokoro library functions directly.
 
-> **Note**: The usage has changed with the microservice approach. Please see the [TTS Service Integration](tts_service_integration.md) document for the latest usage instructions.
+### Emotion-Aware Speech Synthesis (TTS Microservice)
 
-### Legacy Usage (Direct Integration)
+The TTS Microservice processes emotion tags (e.g., `[joy:0.8]`) found in the input text to modify speech characteristics. Here's how it works:
 
-To use the Kokoro TTS engine directly with Daoko, set the TTS engine to "kokoro_tts" in your configuration file and provide the necessary parameters.
+1.  **Tag Extraction:** The service identifies the first emotion tag in the text and extracts the emotion (e.g., "joy") and its intensity (e.g., 0.8). If no intensity is specified, it defaults to 1.0. All emotion tags are then removed from the text before it's sent to the Kokoro engine for phonemization and synthesis.
+2.  **Speech Speed Adjustment:** The primary parameter affected is **speech speed**.
+    *   The service uses an `emotion_mapping` in its configuration (see `kokoro/tts_service/app.py` for defaults, or configure via its `/config` endpoint). This mapping defines speed multipliers for different emotions (e.g., `joy: 1.2` means 20% faster, `sadness: 0.8` means 20% slower).
+    *   An intensity threshold of `0.3` is applied. If the tag's intensity is below this, the speed is not changed.
+    *   For intensities `0.3` and above, the effect is scaled. For example, `[joy:0.8]` would result in a speed closer to the full `1.2x` multiplier than `[joy:0.4]`.
+3.  **Voice Style/Pitch:** The TTS Microservice **does not** currently change voice style (e.g., to a "happy voice") or pitch directly based on these emotion tags. The underlying Kokoro engine might have its own interpretation of any tags passed to it if they were not removed, but the service's explicit emotion handling is focused on speed.
 
-### New Usage (Microservice Approach)
-
-To use the TTS Service microservice with Daoko:
-
-1. Start the TTS Service:
-   ```bash
-   ./start_tts_service.sh
-   ```
-
-2. Set the TTS engine to "tts_service" in your configuration file:
-   ```yaml
-   tts_config:
-     tts_model: 'tts_service'
-   ```
-
-3. The main application will automatically use the TTS Service for speech synthesis.
-
-### Emotion-Aware Speech Synthesis
-
-The Kokoro TTS engine supports emotion-aware speech synthesis by mapping emotion tags in the text to appropriate voice styles. For example, if the text contains the emotion tag `[joy:0.8]`, the Kokoro TTS engine will use a happy voice style for that text.
-
-The emotion mapping is defined in the configuration file and can be customized as needed.
+The `emotion_mapping` for speed can be customized via the TTS service's `/config` endpoint. This allows fine-tuning how emotions translate to speech rate.
 
 ### Available Voices
 
@@ -169,62 +167,46 @@ The Kokoro-82M model comes with several built-in voices. For Daoko, we recommend
 
 For a complete list of available voices, refer to the [Kokoro-82M documentation](https://huggingface.co/hexgrad/Kokoro-82M/blob/main/VOICES.md).
 
-## Integration with Emotion System
+## Integration with Emotion System (TTS Microservice)
 
-The Kokoro TTS engine integrates with the existing emotion system for Daoko. When an emotion tag is detected in the text, the engine:
+When using the TTS Microservice, the process integrates with Daoko's emotion system as follows:
 
-1. Extracts the emotion tag and its intensity value
-2. Maps the emotion to an appropriate voice style using the emotion mapping
-3. Generates speech with the appropriate emotional inflection
-4. The Live2D character (Daoko) then plays the generated audio while displaying the corresponding facial expression and body motion
+1.  The main application sends text potentially containing emotion tags (e.g., `Hello [joy:0.8]!`) to the TTS Microservice.
+2.  The TTS Microservice:
+    *   Extracts the emotion (e.g., "joy") and intensity (e.g., 0.8).
+    *   Adjusts the **speech speed** based on this emotion and intensity, using its configured `emotion_mapping`.
+    *   Removes the emotion tags from the text.
+    *   Generates audio from the cleaned text using the adjusted speed with the selected Kokoro voice.
+3.  The main application receives the audio from the TTS Microservice.
+4.  Separately, the main application likely parses the same emotion tags from the original text to control Daoko's facial expressions and body motions concurrently with audio playback.
+
+This creates a cohesive experience where Daoko's speech rate and visual emotional display are synchronized. Note that the "emotional inflection" in the speech from the TTS service is primarily a change in speed.
 
 This creates a cohesive experience where Daoko's speech, facial expressions, and body motions all match the emotional content of the conversation.
 
 ## Troubleshooting
 
-> **Note**: The troubleshooting steps have changed with the microservice approach. Please see the [TTS Service Integration](tts_service_integration.md) document for the latest troubleshooting information.
+This section is now prioritized for the TTS Microservice. For troubleshooting direct integration, please refer to [Kokoro TTS Setup Guide](kokoro_tts_setup.md).
 
-### Legacy Troubleshooting (Direct Integration)
+### TTS Microservice Troubleshooting
 
-#### Common Issues
+(For common issues related to direct integration, such as CUDA errors, Python package dependencies, or general audio quality adjustments not specific to the microservice, please refer to the troubleshooting section in the [Kokoro TTS Setup Guide](kokoro_tts_setup.md).)
 
-- **Model not found**: Ensure that the Kokoro-82M model is properly downloaded and the path is correctly specified in the configuration file.
-- **CUDA out of memory**: If you encounter CUDA out of memory errors, try using a smaller batch size or switch to CPU inference.
-- **Audio quality issues**: Adjust the sample rate or try a different voice to improve audio quality.
-- **Japanese text processing issues**: Make sure all the required Japanese language dependencies are installed.
+#### Model Files Not Found by Microservice
+If the microservice logs indicate issues loading model files:
+- Verify that the Kokoro-82M model files are present at `~/alltalk_tts/models/kokoro/`.
+- If you use a different download location (e.g., Hugging Face cache), ensure symbolic links are correctly set up to point to `~/alltalk_tts/models/kokoro/`. The `./setup_kokoro_symlink.sh` script mentioned in `docs/kokoro_tts_setup.md` can be useful.
+- Check the `docker-compose.yml` for the TTS service to see how it mounts or expects model files. Ensure these paths align with your setup.
 
-#### Missing Dependencies
+#### TTS Service Issues
 
-If you encounter errors related to missing dependencies, run the `fix_kokoro_env.sh` script to install all required dependencies:
+(MeCab and detailed Japanese text processing issues are primarily relevant to direct integration setup or development of the service itself. Please refer to the troubleshooting section in the [Kokoro TTS Setup Guide](kokoro_tts_setup.md) for guidance on these topics.)
 
-```bash
-./fix_kokoro_env.sh
-```
+If you encounter issues with the TTS Service (e.g., it's not responding, errors in speech generation):
 
-#### MeCab Issues
+(The `./test_tts.sh` script is primarily for testing direct Kokoro library integration. For testing the running TTS service, use the `tts_service/test_service.py` script as shown below.)
 
-If you encounter issues with MeCab, the scripts will attempt to fix the configuration automatically. However, if you still have issues, you can try the following:
-
-```bash
-# Check MeCab installation
-mecab -v
-
-# Check MeCab dictionary
-mecab -D
-
-# Create MeCab configuration file manually
-sudo mkdir -p /usr/local/etc
-echo "dicdir = /var/lib/mecab/dic/ipadic-utf8" | sudo tee /usr/local/etc/mecabrc
-
-# Test MeCab
-echo "テスト" | mecab
-```
-
-If you see an error like `param.cpp(69) [ifs] no such file or directory: /usr/local/etc/mecabrc`, it means the MeCab configuration file is missing. The scripts should create this file automatically, but you can also create it manually as shown above.
-
-#### Testing
-
-You can test the Kokoro TTS integration using the `test_tts.sh` script:
+#### Testing the TTS Service
 
 ```bash
 # List available voices
