@@ -12,9 +12,33 @@ The Kokoro-82M TTS model is integrated with the main project environment using u
 2. Kokoro-82M model files (located at ~/alltalk_tts/models/kokoro)
 3. uv package manager (for managing Python dependencies)
 
-## Simplified Setup
+## Recommended Setup: TTS Microservice
 
-The easiest way to set up the Kokoro TTS engine is to use the provided test script:
+The primary and recommended method for using Kokoro TTS is through the TTS microservice. Configure it by setting the TTS model to `kokoro_tts` in your main application's configuration file:
+
+```yaml
+TTS_CONFIG:
+  tts_model: kokoro_tts
+  kokoro_tts:
+    voice: "jf_alpha"  # Japanese female voice for Daoko
+    language: "ja"     # Japanese language
+    device: "cpu"      # Use CPU to avoid CUDA version conflicts
+    cache_dir: "cache"
+    sample_rate: 24000
+    output_format: "wav"
+    emotion_mapping:
+      joy: "happy"
+      sadness: "sad"
+      anger: "angry"
+      fear: "fearful"
+      surprise: "surprised"
+      disgust: "disgusted"
+      neutral: "neutral"
+      smirk: "happy"
+```
+This approach is generally preferred for stability and separation of concerns.
+
+For quick testing of Kokoro TTS functionality (e.g., if you are developing the TTS service itself or want to test voices in isolation), a dedicated script is available:
 
 ```bash
 ./test_kokoro.sh
@@ -26,9 +50,11 @@ This script will:
 3. Install the required packages using uv
 4. Test all Japanese female voices with sample text
 
-## Manual Setup Steps
+## Manual Setup for Direct Integration (Alternative)
 
-If you prefer to set up the Kokoro TTS engine manually, follow these steps:
+Direct integration involves using the Kokoro TTS engine (e.g., via `open_llm_vtuber.tts.kokoro_tts` as shown in "Using Kokoro TTS in Your Code" below) directly within your application. This method might be used for development, specific testing scenarios, or when a separate microservice is not desired.
+
+If you choose this approach, follow these steps:
 
 ### 1. Create Symbolic Links to Model Files
 
@@ -65,7 +91,7 @@ You can test specific voices using the test script:
 ./test_kokoro.sh --list
 ```
 
-### 5. Using Kokoro TTS in Your Code
+### 4. Using Kokoro TTS in Your Code
 
 To use the Kokoro TTS engine in your code, you can import it like this:
 
@@ -88,32 +114,14 @@ output_file = tts_engine.generate_audio(
 print(f"Generated audio file: {output_file}")
 ```
 
-### 6. Testing Specific Voices
+### 5. Configuration for Direct Integration
 
-You can test specific voices using the test script:
+When using direct integration, you might manage configuration through a specific file (e.g., `docs/conf/kokoro_tts_venv.yaml` if using a dedicated virtual environment for testing TTS) or directly in your application code. This configuration typically specifies:
+1. Use of CPU inference (to avoid CUDA conflicts).
+2. The Kokoro-82M model to be used (often defaults to the standard one).
+3. Emotion mapping settings, if applicable to your direct setup.
 
-```bash
-# Test a specific voice
-./test_kokoro.sh jf_alpha "こんにちは、私はダオコです。[joy:0.8]"
-
-# List all available voices
-./test_kokoro.sh --list
-```
-
-The script will generate audio files in the `cache` directory.
-
-## Emotion Handling in Kokoro TTS
-
-The Kokoro-82M TTS model doesn't directly support emotion tags or a `style` parameter. Instead, our implementation handles emotions by:
-
-1. **Extracting emotion tags** from the text (e.g., `[joy:0.8]`, `[sadness:0.6]`)
-2. **Adjusting speech parameters** based on the emotion and intensity:
-   - **Speed**: Adjusts the speech rate based on emotion (faster for happy/excited, slower for sad)
-   - **Voice**: Currently uses the base voice for all emotions
-
-The emotion intensity affects how strongly the speech parameters are modified:
-- Intensities below 0.3 use the default speech parameters
-- Intensities between 0.3 and 1.0 gradually increase the effect on speech parameters
+You can modify such configuration files or code to suit your direct integration needs.
 
 ## Japanese Language Support
 
@@ -124,123 +132,66 @@ The Kokoro-82M TTS model includes several Japanese voices (prefixed with `jf_` f
 - `jf_nezumi`
 - `jf_tebukuro`
 
-When using these voices, the implementation automatically:
+When using these voices, the implementation (both in the microservice and direct integration) automatically:
 
-1. Sets the language to Japanese (`ja`)
-2. Uses the Misaki tokenizer for proper Japanese text processing
-3. Adjusts speech parameters based on emotion tags:
-   - Modifies speech speed based on emotion (faster for happy/excited, slower for sad)
-   - Uses the base voice for all emotions (future versions may support voice blending)
+1. Sets the language to Japanese (`ja`).
+2. Uses the Misaki tokenizer for proper Japanese text processing. (For direct integration, ensure Misaki is installed in your environment as per "Manual Setup Steps").
+3. Adjusts speech parameters based on emotion tags (see "Emotion Handling in Kokoro TTS" section).
 
-To use a Japanese voice in your configuration:
-
+To use a Japanese voice in your configuration for direct integration (the microservice config is shown above):
 ```yaml
+# Example for direct integration configuration
 TTS_CONFIG:
-  TTS_ENGINE: kokoro_tts
+  TTS_ENGINE: kokoro_tts # This key might vary based on your direct integration's config structure
   TTS_VOICE: jf_alpha  # or any other Japanese voice
-  TTS_LANGUAGE: ja
+  TTS_LANGUAGE: ja     # Ensure language is set to Japanese
 ```
+(Note: The specific YAML structure for direct integration configuration might differ from the microservice configuration shown earlier.)
 
-## Configuration
-
-The virtual environment uses a simplified configuration file (`docs/conf/kokoro_tts_venv.yaml`) that:
-
-1. Uses CPU inference instead of CUDA to avoid CUDA version conflicts
-2. Uses the default Kokoro-82M model (no need to specify a custom model path)
-3. Has the same emotion mapping as the main configuration file
-
-You can modify this configuration file to suit your needs.
-
-## Japanese Language Support
-
-The Kokoro-82M TTS model includes several Japanese voices (prefixed with `jf_` for female voices):
-
-- `jf_alpha`
-- `jf_gongitsune`
-- `jf_nezumi`
-- `jf_tebukuro`
-
-When using these voices, the implementation automatically:
-
-1. Sets the language to Japanese (`ja`)
-2. Uses the Misaki tokenizer for proper Japanese text processing
-3. Adjusts speech parameters based on emotion tags:
-   - Modifies speech speed based on emotion (faster for happy/excited, slower for sad)
-   - Uses the base voice for all emotions (future versions may support voice blending)
-
-To use a Japanese voice, set the following in your configuration:
-
-```yaml
-TTS_CONFIG:
-  TTS_ENGINE: kokoro_tts
-  TTS_VOICE: jf_alpha  # or any other Japanese voice
-  TTS_LANGUAGE: ja
-```
-
-The Misaki tokenizer is automatically installed as part of the setup process and is used to properly process Japanese text before sending it to the Kokoro-82M model.
+The Misaki tokenizer is automatically installed as part of the setup process for direct integration (see step 2) and is used to properly process Japanese text before sending it to the Kokoro-82M model.
 
 ## Emotion Handling in Kokoro TTS
 
-The Kokoro-82M TTS model doesn't directly support emotion tags or a `style` parameter. Instead, our implementation handles emotions by:
+The way emotion tags (e.g., `[joy:0.8]`) affect speech output differs significantly between the TTS Microservice and Direct Integration using `KokoroWrapper`.
 
-1. **Extracting emotion tags** from the text (e.g., `[joy:0.8]`, `[sadness:0.6]`)
-2. **Adjusting speech parameters** based on the emotion and intensity:
-   - **Speed**: Adjusts the speech rate based on emotion (faster for happy/excited, slower for sad)
-   - **Voice**: Currently uses the base voice for all emotions
+### TTS Microservice Emotion Handling
 
-The emotion intensity affects how strongly the speech parameters are modified:
-- Intensities below 0.3 use the default speech parameters
-- Intensities between 0.3 and 1.0 gradually increase the effect on speech parameters
+As detailed in `docs/kokoro_tts_integration.md`, the **TTS Microservice** actively processes emotion tags:
+- It extracts the emotion and intensity from the first tag.
+- It adjusts **speech speed** based on the emotion and intensity, using a configurable `emotion_mapping` (e.g., `joy: 1.2` for faster speech).
+- It removes all emotion tags before sending the cleaned text to the Kokoro engine.
+- It currently **does not** modify voice style or pitch based on these tags.
 
-Future enhancements may include:
-- Voice blending for different emotions
-- Pitch adjustments based on emotion
-- Custom voice files optimized for specific emotions
+### Direct Integration (`KokoroWrapper`) Emotion Handling
 
-## Integration with the Main Application
+When using `KokoroWrapper` for direct integration:
+- The `KokoroWrapper` itself **does not implement any specific logic to parse emotion tags or modify speech parameters** (like speed or pitch) based on them.
+- The input text, including any emotion tags, is passed **directly** to the underlying Kokoro TTS engine.
+- Any effect these tags have on the generated speech is entirely dependent on the **native capabilities of the Kokoro TTS engine and the specific voice being used**. Some Kokoro voices might be designed to respond to certain embedded tags or SSML-like syntax, but this is not managed or standardized by the `KokoroWrapper`.
+- The `emotion_mapping` section in `conf.yaml` (under `tts_config.kokoro_tts`) is **not used by `KokoroWrapper`** to adjust speech speed or other parameters. This configuration is primarily relevant for the TTS Microservice.
+- If you require explicit and configurable control over speech parameters based on emotion tags (specifically for speed adjustments), using the **TTS Microservice is the recommended approach.**
+- For direct integration, you would need to rely on the Kokoro engine's inherent features for any emotion or style expression, which may vary and might require different tagging formats than the `[emotion:intensity]` style.
 
-The Kokoro TTS engine is now integrated with the main application. To use it, simply set the TTS model to `kokoro_tts` in your configuration file:
-
-```yaml
-TTS_CONFIG:
-  tts_model: kokoro_tts
-  kokoro_tts:
-    voice: "jf_alpha"  # Japanese female voice for Daoko
-    language: "ja"     # Japanese language
-    device: "cpu"      # Use CPU to avoid CUDA version conflicts
-    cache_dir: "cache"
-    sample_rate: 24000
-    output_format: "wav"
-    emotion_mapping:
-      joy: "happy"
-      sadness: "sad"
-      anger: "angry"
-      fear: "fearful"
-      surprise: "surprised"
-      disgust: "disgusted"
-      neutral: "neutral"
-      smirk: "happy"
-```
+(Note: Redundant sections have been removed or integrated above for clarity.)
 
 ## Troubleshooting
 
 ### Model Files Not Found
 
-If the Kokoro TTS engine can't find the model files, make sure the symbolic links are set up correctly:
+If the Kokoro TTS engine can't find the model files (either for microservice or direct integration), ensure you have run the symbolic link setup script:
 
 ```bash
-mkdir -p models/kokoro
-ln -sf ~/alltalk_tts/models/kokoro/* models/kokoro/
 ./setup_kokoro_symlink.sh
 ```
+This script creates symbolic links from the Hugging Face cache directory to the Kokoro-82M model files. If issues persist, verify the paths in the script and that the original model files exist at `~/alltalk_tts/models/kokoro/`.
 
 ### CUDA Version Conflicts
 
 If you encounter CUDA version conflicts, try using CPU inference by setting `device: "cpu"` in your configuration file.
 
-### Japanese Text Not Processed Correctly
+### Japanese Text Not Processed Correctly (for Direct Integration)
 
-If Japanese text is not processed correctly, make sure the Misaki tokenizer is installed:
+If Japanese text is not processed correctly during direct integration, make sure the Misaki tokenizer is installed in your Python environment:
 
 ```bash
 source .venv/bin/activate
