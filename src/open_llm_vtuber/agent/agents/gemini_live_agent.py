@@ -409,11 +409,11 @@ class GeminiLiveAgent(AgentInterface):
                                 yield AudioOutput(
                                     audio_path=temp_audio_path,
                                     display_text=DisplayText(text=display_transcript, name=self.character_name, avatar=self.character_avatar),
-                                    transcript=transcript_text,
+                                    transcript=display_transcript,
                                     actions=actions
                                 )
 
-                                accumulated_transcript += transcript_text
+                                accumulated_transcript += display_transcript
 
                 if response.server_content and response.server_content.generation_complete:
                     logger.info("Gemini indicated generation complete.")
@@ -751,7 +751,9 @@ class GeminiLiveAgent(AgentInterface):
 
         def replace_with_emoji(match):
             emotion_name = match.group(1).lower()
-            return self.EMOTION_TO_EMOJI_MAP.get(emotion_name, "")
+            emoji = self.EMOTION_TO_EMOJI_MAP.get(emotion_name, "")
+            logger.debug(f"Emotion tag found: '{match.group(0)}', extracted emotion: '{emotion_name}', replaced with emoji: '{emoji}'")
+            return emoji
 
         logger.debug(f"Original text before emotion tag processing: '{text}'")
 
@@ -881,7 +883,7 @@ class GeminiLiveAgent(AgentInterface):
                                 yield AudioOutput(
                                     audio_path=temp_audio_path,
                                     display_text=DisplayText(text=display_transcript, name=self.character_name, avatar=self.character_avatar),
-                                    transcript=transcript_text,
+                                    transcript=display_transcript,
                                     actions=actions
                                 )
 
