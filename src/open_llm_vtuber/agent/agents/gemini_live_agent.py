@@ -262,7 +262,9 @@ class GeminiLiveAgent(AgentInterface):
                 f"The user said: \"{user_message}\"\n\n"
                 "Plan your response to the user and include emotion tags like [joy], [surprise], [sadness], etc. "
                 "to indicate your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. "
-                "This is for planning purposes only to capture your emotional state."
+                "These tags are for internal planning and facial expression control ONLY and should NOT be spoken aloud in the final response. "
+                "The final spoken response should be natural and conversational without any emotion tags. "
+                "For display purposes, you should output emojis corresponding to the emotions, e.g., instead of [joy] output 😊."
             )
 
             # Send the planning prompt
@@ -383,7 +385,7 @@ class GeminiLiveAgent(AgentInterface):
                             if transcript_text:
                                 # For display, combine the clean transcript with emotion tags from planning
                                 # This gives us the best of both worlds - clean speech but emotional display
-                                display_transcript = transcript_text
+                                display_transcript = self._process_emotion_tags_for_display(transcript_text)
 
                                 # Add the planning response's emotion tags to the history for future reference
                                 if self.history_conf_uid and self.history_history_uid and planning_response:
@@ -720,41 +722,51 @@ class GeminiLiveAgent(AgentInterface):
 
         return extracted_text
 
-    def _remove_emotion_tags(self, text: str) -> str:
+    EMOTION_TO_EMOJI_MAP = {
+        "joy": "😊",
+        "surprise": "😮",
+        "sadness": "😢",
+        "anger": "😡",
+        "disgust": "🤢",
+        "fear": "😨",
+        "smirk": "😏",
+        "neutral": "😐",
+    }
+
+    def _process_emotion_tags_for_display(self, text: str) -> str:
         """
-        Remove emotion tags from text.
+        Replaces emotion tags in text with corresponding emojis for display.
 
         Args:
-            text: Text with potential emotion tags
+            text: Text with potential emotion tags.
 
         Returns:
-            Text with emotion tags removed
+            Text with emotion tags replaced by emojis.
         """
         if not text:
             return ""
 
-        # Regular expression to match both formats:
-        # [emotion] and [emotion:intensity]
-        # This pattern is more robust and handles various formats
+        # Regular expression to match both formats: [emotion] and [emotion:intensity]
         emotion_pattern = r'\[\s*([a-zA-Z_]+)(?:\s*:\s*([0-9]*\.?[0-9]+))?\s*\]'
 
-        # Log the original text for debugging
-        logger.debug(f"Original text before emotion tag removal: '{text}'")
+        def replace_with_emoji(match):
+            emotion_name = match.group(1).lower()
+            return self.EMOTION_TO_EMOJI_MAP.get(emotion_name, "")
 
-        # Remove all emotion tags from the text
-        clean_text = re.sub(emotion_pattern, '', text)
+        logger.debug(f"Original text before emotion tag processing: '{text}'")
 
-        # Clean up any extra spaces (including multiple spaces, newlines, etc.)
-        clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+        # Replace emotion tags with emojis
+        processed_text = re.sub(emotion_pattern, replace_with_emoji, text)
 
-        # Log the cleaned text for debugging
-        logger.debug(f"Cleaned text after emotion tag removal: '{clean_text}'")
+        # Clean up any extra spaces (including multiple spaces, newlines, etc.) that might result from removal
+        processed_text = re.sub(r'\s+', ' ', processed_text).strip()
 
-        # If the text changed, log that emotion tags were removed
-        if clean_text != text:
-            logger.info(f"Removed emotion tags from text")
+        logger.debug(f"Processed text after emotion tag replacement: '{processed_text}'")
 
-        return clean_text
+        if processed_text != text:
+            logger.info("Replaced emotion tags with emojis for display.")
+
+        return processed_text
 
     async def _extract_emotions_and_generate_response(self, user_message: str) -> AsyncIterator[AudioOutput]:
         """
@@ -783,8 +795,9 @@ class GeminiLiveAgent(AgentInterface):
                 f"The user said: \"{user_message}\"\n\n"
                 "You can include emotion tags like [joy], [surprise], [sadness], etc. to indicate "
                 "your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. "
-                "These tags will control your facial expressions but should NOT be spoken aloud. "
-                "Respond naturally as if the tags aren't there."
+                "These tags will control your facial expressions and should NOT be spoken aloud. "
+                "Instead of spoken emotion tags, you should output corresponding emojis for display purposes (e.g., [joy] becomes 😊). "
+                "Respond naturally as if the tags aren't there, but include the emojis in the text for display."
             )
 
             # Send the prompt
@@ -852,7 +865,7 @@ class GeminiLiveAgent(AgentInterface):
                             # If we found a transcript, use it
                             if transcript_text:
                                 # For display, we'll use the transcript but remove emotion tags
-                                display_transcript = self._remove_emotion_tags(transcript_text)
+                                display_transcript = self._process_emotion_tags_for_display(transcript_text)
 
                                 # Save audio to a temporary file
                                 temp_audio_path = f"cache/gemini_live_{id(audio_data)}.wav"
@@ -868,7 +881,7 @@ class GeminiLiveAgent(AgentInterface):
                                 yield AudioOutput(
                                     audio_path=temp_audio_path,
                                     display_text=DisplayText(text=display_transcript, name=self.character_name, avatar=self.character_avatar),
-                                    transcript=display_transcript,
+                                    transcript=transcript_text,
                                     actions=actions
                                 )
 
