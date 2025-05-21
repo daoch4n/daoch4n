@@ -20,6 +20,7 @@ from .chat_history_manager import (
 from .config_manager.utils import scan_config_alts_directory, scan_bg_directory
 from .conversations.conversation_handler import (
     handle_conversation_trigger,
+    handle_individual_interrupt,
 )
 
 
@@ -62,9 +63,6 @@ class WebSocketHandler:
     def _init_message_handlers(self) -> Dict[str, Callable]:
         """Initialize message type to handler mapping"""
         return {
-            "add-client-to-group": self._handle_group_operation,
-            "remove-client-from-group": self._handle_group_operation,
-            "request-group-info": self._handle_group_info,
             "fetch-history-list": self._handle_history_list_request,
             "fetch-and-set-history": self._handle_fetch_history,
             "create-new-history": self._handle_create_history,
@@ -126,8 +124,6 @@ class WebSocketHandler:
         self.client_contexts[client_uid] = session_service_context
         self.received_data_buffers[client_uid] = np.array([])
 
-        self.chat_group_manager.client_group_map[client_uid] = ""
-        await self.send_group_update(websocket, client_uid)
 
     async def _send_initial_messages(
         self,
@@ -152,8 +148,6 @@ class WebSocketHandler:
             )
         )
 
-        # Send initial group status
-        await self.send_group_update(websocket, client_uid)
 
         # Start microphone
         await websocket.send_text(json.dumps({"type": "control", "text": "start-mic"}))
@@ -237,34 +231,9 @@ class WebSocketHandler:
             if msg_type != "frontend-playback-complete":
                 logger.warning(f"Unknown message type: {msg_type}")
 
-    async def _handle_group_operation(
-        self, websocket: WebSocket, client_uid: str, data: dict
-    ) -> None:
-        """Handle group-related operations"""
-        operation = data.get("type")
-        target_uid = data.get(
-            "invitee_uid" if operation == "add-client-to-group" else "target_uid"
-        )
-
-        await handle_group_operation(
-            operation=operation,
-            client_uid=client_uid,
-            target_uid=target_uid,
-            chat_group_manager=self.chat_group_manager,
-            client_connections=self.client_connections,
-            send_group_update=self.send_group_update,
-        )
 
     async def handle_disconnect(self, client_uid: str) -> None:
         """Handle client disconnection"""
-        group = self.chat_group_manager.get_client_group(client_uid)
-
-        await handle_client_disconnect(
-            client_uid=client_uid,
-            chat_group_manager=self.chat_group_manager,
-            client_connections=self.client_connections,
-            send_group_update=self.send_group_update,
-        )
 
         # Clean up other client data
         self.client_connections.pop(client_uid, None)
@@ -279,41 +248,7 @@ class WebSocketHandler:
         logger.info(f"Client {client_uid} disconnected")
         message_handler.cleanup_client(client_uid)
 
-    async def broadcast_to_group(
-        self, group_members: list[str], message: dict, exclude_uid: str = None
-    ) -> None:
-        """Broadcasts a message to group members"""
-        await broadcast_to_group(
-            group_members=group_members,
-            message=message,
-            client_connections=self.client_connections,
-            exclude_uid=exclude_uid,
-        )
 
-    async def send_group_update(self, websocket: WebSocket, client_uid: str):
-        """Sends group information to a client"""
-        group = self.chat_group_manager.get_client_group(client_uid)
-        if group:
-            current_members = self.chat_group_manager.get_group_members(client_uid)
-            await websocket.send_text(
-                json.dumps(
-                    {
-                        "type": "group-update",
-                        "members": current_members,
-                        "is_owner": group.owner_uid == client_uid,
-                    }
-                )
-            )
-        else:
-            await websocket.send_text(
-                json.dumps(
-                    {
-                        "type": "group-update",
-                        "members": [],
-                        "is_owner": False,
-                    }
-                )
-            )
 
     async def _handle_interrupt(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
@@ -321,7 +256,6 @@ class WebSocketHandler:
         """Handle conversation interruption"""
         heard_response = data.get("text", "")
         context = self.client_contexts[client_uid]
-        group = self.chat_group_manager.get_client_group(client_uid)
 
         await handle_individual_interrupt(
             client_uid=client_uid,
@@ -472,10 +406,8 @@ class WebSocketHandler:
             websocket=websocket,
             client_contexts=self.client_contexts,
             client_connections=self.client_connections,
-            chat_group_manager=self.chat_group_manager,
             received_data_buffers=self.received_data_buffers,
             current_conversation_tasks=self.current_conversation_tasks,
-            broadcast_to_group=self.broadcast_to_group,
         )
 
     async def _handle_fetch_configs(
@@ -506,31 +438,7 @@ class WebSocketHandler:
             json.dumps({"type": "background-files", "files": bg_files})
         )
 
-    async def _handle_audio_play_start(
-        self, websocket: WebSocket, client_uid: str, data: WSMessage
-    ) -> None:
-        """
-        Handle audio playback start notification
-        """
-        group_members = self.chat_group_manager.get_group_members(client_uid)
-        if len(group_members) > 1:
-            display_text = data.get("display_text")
-            if display_text:
-                silent_payload = prepare_audio_payload(
-                    audio_path=None,
-                    display_text=display_text,
-                    actions=None,
-                    forwarded=True,
-                )
-                await self.broadcast_to_group(
-                    group_members, silent_payload, exclude_uid=client_uid
-                )
 
-    async def _handle_group_info(
-        self, websocket: WebSocket, client_uid: str, data: WSMessage
-    ) -> None:
-        """Handle group info request"""
-        await self.send_group_update(websocket, client_uid)
 
     async def _handle_mcp_tool_invoke(
         self, websocket: WebSocket, client_uid: str, data: WSMessage
