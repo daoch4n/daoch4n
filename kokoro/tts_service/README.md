@@ -1,124 +1,81 @@
-# Japanese TTS Microservice
+# Kokoro TTS Microservice
 
-This microservice provides a simple API for generating Japanese speech from text using Kokoro TTS.
+This directory contains the Flask-based Kokoro TTS microservice. It provides an HTTP API for generating speech using the Kokoro-82M TTS engine, primarily for Japanese.
 
-## Features
+For detailed information on features, API endpoints, setup, configuration, emotion handling, and client usage, please refer to the main project documentation:
 
-- Japanese text-to-speech synthesis
-- Support for multiple voices (jf_alpha, jf_gongitsune, jf_nezumi, jf_tebukuro)
-- Emotion support through text tags (e.g., [joy:0.8])
-- Simple REST API
+*   **[Kokoro TTS Integration Guide](../../docs/kokoro_tts_integration.md)**
 
-## Installation
+## Quick Start
 
 ### Using Docker (Recommended)
 
-1. Build and start the service using Docker Compose:
+The service is designed to be run with Docker using the shell scripts located in the project's `kokoro` directory (one level above this `tts_service` directory):
 
+*   **Start the service:**
+    ```bash
+    # From the project root directory
+    ./kokoro/start_tts_service.sh 
+    # Or, if you are in the kokoro directory: ./start_tts_service.sh
+    ```
+    This script builds the Docker image if necessary and starts the container. The service will typically be available at `http://localhost:5000` (or the port specified by the `TTS_SERVICE_PORT` environment variable).
+*   **Stop the service:**
+    ```bash
+    # From the project root directory
+    ./kokoro/stop_tts_service.sh
+    ```
+*   **View logs:**
+    ```bash
+    # Check docker-compose.yml if you customized the service name from the default 'kokoro_tts_service'
+    docker logs kokoro_tts_service
+    ```
+
+### Running Manually (for Development)
+
+1.  **Prerequisites:**
+    *   Python 3.8+
+    *   MeCab (Japanese morphological analyzer) and its dictionaries (e.g., `ipadic-utf8` or `unidic-lite`). Ensure MeCab is correctly configured on your system.
+    *   System dependencies like `swig` might be required for some Python packages.
+    (See the main `docs/kokoro_tts_integration.md` for more detailed MeCab setup examples).
+
+2.  **Install Python Dependencies:**
+    Navigate to this directory (`kokoro/tts_service`) and run:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+3.  **Environment Variables (Optional):**
+    The service can be configured using these environment variables:
+    *   `FLASK_DEBUG`: Set to `True` for Flask debug mode, or `False` for production mode. Defaults to `True`. **Important: Set to `False` in production.**
+    *   `TTS_SERVICE_PORT`: The port on which the service will listen. Defaults to `5000`.
+
+4.  **Run the Service:**
+    From this `kokoro/tts_service` directory:
+    ```bash
+    python app.py
+    ```
+    The service will start on `0.0.0.0` at the configured port.
+
+## API and Configuration
+
+All details regarding API endpoints (`/tts`, `/voices`, `/health`, `/config`), request/response formats, emotion handling, configuration options, and client usage examples are centralized in:
+
+*   **[Kokoro TTS Integration Guide](../../docs/kokoro_tts_integration.md)**
+
+Please consult that document for comprehensive information.
+
+**Security Note for `/config` endpoint:** As mentioned in the main documentation, the POST functionality of the `/config` endpoint should be secured or disabled in production environments.
+
+## Testing the Service
+
+A test script is provided in this directory to interact with the service's API:
 ```bash
-docker-compose up -d
+python test_service.py --text "こんにちは、テストです。[joy:0.8]"
 ```
+Use `python test_service.py --help` for more options.
 
-2. The service will be available at http://localhost:5000
-
-### Manual Installation
-
-1. Install system dependencies:
-
-```bash
-sudo apt-get update && sudo apt-get install -y mecab libmecab-dev mecab-ipadic-utf8 swig
-```
-
-2. Create MeCab configuration:
-
-```bash
-sudo mkdir -p /usr/local/etc
-echo "dicdir = /var/lib/mecab/dic/ipadic-utf8" | sudo tee /usr/local/etc/mecabrc
-```
-
-3. Install Python dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-4. Run the service:
-
-```bash
-python app.py
-```
-
-## API Endpoints
-
-### Generate Speech
-
-```
-POST /tts
-```
-
-Request body:
-
-```json
-{
-  "text": "こんにちは、私はダオコです。[joy:0.8]",
-  "voice": "jf_alpha"
-}
-```
-
-Response: Audio file (WAV format)
-
-### Get Available Voices
-
-```
-GET /voices
-```
-
-Response:
-
-```json
-{
-  "voices": ["jf_alpha", "jf_gongitsune", "jf_nezumi", "jf_tebukuro"],
-  "default": "jf_alpha"
-}
-```
-
-### Health Check
-
-```
-GET /health
-```
-
-Response:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-## Emotion Tags
-
-You can add emotion tags to the text to express different emotions:
-
-```
-こんにちは、私はダオコです。[joy:0.8]
-```
-
-The available emotions are:
-- `joy` - Happy
-- `sadness` - Sad
-- `anger` - Angry
-- `fear` - Fearful
-- `surprise` - Surprised
-- `disgust` - Disgusted
-- `neutral` - Neutral
-- `smirk` - Happy (alternative)
-
-The number after the colon is the intensity of the emotion (0.0 to 1.0).
-
-## Client Library
-
-A Python client library is available in the main application:
+## Client Library Example
+A Python client library (`TTSServiceClient`) is available in the main application for programmatic interaction:
 
 ```python
 from open_llm_vtuber.tts.tts_service_client import TTSServiceClient
@@ -137,12 +94,14 @@ if client.health_check():
         text="こんにちは、私はダオコです。[joy:0.8]",
         voice="jf_alpha"
     )
-    print(f"Generated audio file: {output_path}")
+    print(f"Generated audio file: {output_path}") # Note: TTSServiceClient saves to file by default.
 ```
 
 ## Troubleshooting
 
-### MeCab Issues
+For troubleshooting tips, including MeCab issues, Docker log inspection, and manual run issues, please refer to the troubleshooting sections in the:
+
+*   **[Kokoro TTS Integration Guide](../../docs/kokoro_tts_integration.md)**
 
 If you encounter issues with MeCab, make sure it's properly installed and the dictionary is available:
 
