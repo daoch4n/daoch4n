@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Gemini Live Agent supports emotion tags in the format `[emotion]` or `[emotion:intensity]` (e.g., `[joy:0.7]`, `[surprise:0.3]`). These tags are primarily used to control the facial expressions and animations of the Live2D model and should not be spoken aloud by the Text-to-Speech (TTS) system.
+The Gemini Live Agent supports emotion tags in the format `[emotion]` or `[emotion:intensity]` (e.g., `[joy:0.7]`, `[surprise:0.3]`). These tags are primarily used to control the facial expressions and animations of the Live2D model and should not be spoken aloud by the Text-to-Speech (TTS) system. This document outlines the strategies for handling these tags, including their removal from speech, their use for facial expressions with intensity, and their integration with body motions.
 
 ## Problem Statement
 
@@ -25,9 +25,9 @@ This approach uses a single prompt that instructs the model to include emotion t
 
 **Prompt Example:**
 ```
-You can include emotion tags like [joy], [surprise], [sadness], etc. to indicate 
-your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. 
-These tags will control your facial expressions but should NOT be spoken aloud. 
+You can include emotion tags like [joy], [surprise], [sadness], etc. to indicate
+your emotional tone. Use format [emotion:0.7] to indicate intensity if needed.
+These tags will control your facial expressions but should NOT be spoken aloud.
 Respond naturally as if the tags aren't there.
 ```
 
@@ -67,8 +67,8 @@ The model is asked to plan a response with emotion tags. This response is *never
 
 **Planning Prompt Example:**
 ```
-Plan your response to the user and include emotion tags like [joy], [surprise], [sadness], etc. 
-to indicate your emotional tone. Use format [emotion:0.7] to indicate intensity if needed. 
+Plan your response to the user and include emotion tags like [joy], [surprise], [sadness], etc.
+to indicate your emotional tone. Use format [emotion:0.7] to indicate intensity if needed.
 This is for planning purposes only to capture your emotional state.
 ```
 
@@ -77,7 +77,7 @@ The model is then asked to generate a clean spoken response *without* any emotio
 
 **Clean Response Prompt Example:**
 ```
-Respond naturally to the user without using or mentioning any emotion tags or square brackets. 
+Respond naturally to the user without using or mentioning any emotion tags or square brackets.
 Just give a normal conversational response as if you're speaking directly to them.
 ```
 
@@ -186,10 +186,10 @@ class DisplayText:
     def __init__(self, text, name=None, avatar=None):
         pass
 class Actions:
-    def __init__(self):
-        self.expressions = []
-        self.voice_modulation = {}
-        self.gestures = []
+    def __init__(self, expressions=None, voice_modulation=None, gestures=None):
+        self.expressions = expressions if expressions is not None else []
+        self.voice_modulation = voice_modulation if voice_modulation is not None else {}
+        self.gestures = gestures if gestures is not None else []
 class Live2DModel:
     def extract_emotion(self, text):
         # Placeholder for emotion extraction logic
@@ -202,7 +202,7 @@ class Live2DModel:
         return emotions
     def get_interpolated_expression(self, idx, intensity):
         # Placeholder for Live2D expression interpolation
-        return f"expression_{idx}_{intensity}"
+        return {"expression_index": idx, "intensity": intensity}
 class BatchInput:
     def __init__(self, texts):
         self.texts = texts
@@ -316,8 +316,8 @@ This method generates the actual spoken response. It uses the emotion tags extra
                 expression_tuples = self.live2d_model.extract_emotion(planning_response)
                 if expression_tuples:
                     interpolated_expressions = [
-                        self.live2d_model.get_interpolated_expression(idx, intensity)
-                        for idx, intensity in expression_tuples
+                        self.live2d_model.get_interpolated_expression(expr_index, intensity) # Changed from idx to expr_index to match live2d_model.py
+                        for expr_index, intensity in expression_tuples
                     ]
                     actions.expressions = interpolated_expressions
                     logger.info(f"Extracted expressions: {expression_tuples}")
@@ -526,6 +526,189 @@ The main `chat` method orchestrates the two-step process, calling `_extract_emot
 2.  **Token Usage**: The dual prompt approach approximately doubles the token usage per interaction (~50-100 tokens per phase per user message).
 3.  **Memory Usage**: Minimal additional memory impact (~10-20KB per interaction) as planning responses are temporary.
 
+## Detailed Feature Implementations
+
+This section provides more in-depth details on specific emotion-related features, including how emotion intensity is handled and how motions are integrated.
+
+### Emotion Intensity for Live2D Models
+
+The system is designed to handle emotion intensity values (e.g., `[joy:0.7]`) to allow for nuanced facial expressions.
+
+**Backend Emotion Extraction and Transmission:**
+The backend correctly extracts emotion tags and their intensity values from text using regex and packages them for transmission to the frontend.
+The `extract_emotion` method in `src/open_llm_vtuber/live2d_model.py` and `get_interpolated_expression` method correctly process and format these values.
+
+```python
+# From src/open_llm_vtuber/live2d_model.py
+def extract_emotion(self, str_to_check: str) -> list:
+    # Regular expression to match both formats:
+    # [emotion] and [emotion:intensity]
+    emotion_pattern = r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]'
+    
+    # Find all emotion tags in the text
+    matches = re.finditer(emotion_pattern, str_to_check)
+    
+    expression_list = [] # Ensure this list is initialized
+    for match in matches:
+        emotion = match.group(1)
+        intensity_str = match.group(2)
+        
+        # Check if the emotion exists in our emotion map
+        # Placeholder for self.emo_map logic, assuming it maps emotion names to indices
+        if emotion in getattr(self, 'emo_map', {}): # Added getattr for robustness
+            # Get the expression index
+            expression_index = self.emo_map[emotion]
+            
+            # Parse intensity value, default to 1.0 if not specified
+            intensity = 1.0
+            if intensity_str:
+                try:
+                    intensity = float(intensity_str)
+                    # Clamp intensity to valid range [0.0, 1.0]
+                    intensity = max(0.0, min(1.0, intensity))
+                except ValueError:
+                    intensity = 1.0
+                    
+            expression_list.append((expression_index, intensity))
+    return expression_list # Return the list
+
+def get_interpolated_expression(self, expression_index: int, intensity: float) -> dict:
+    # Ensure intensity is within valid range
+    intensity = max(0.0, min(1.0, intensity))
+    
+    # Create a dictionary with the expression index and intensity
+    interpolated_expression = {
+        "expression_index": expression_index,
+        "intensity": intensity
+    }
+    
+    return interpolated_expression
+```
+
+**Frontend Application (Current Status):**
+In `frontend-src/src/renderer/src/hooks/utils/use-audio-task.ts`, the frontend receives the expression data. However, the `model.expression` and `setExpression` methods in `live2d.tsx` currently only process a name/index and do not inherently handle the intensity value for interpolating expressions.
+
+### Emotion-Motion Integration
+
+The Live2D model animation system has been enhanced to automatically change both facial expressions and body poses based on emotion tags in the AI's responses. This creates a more dynamic and expressive character that reacts naturally to the emotional content of the conversation.
+
+The system is intensity-aware, meaning that body motions are only triggered when the emotion intensity is greater than 0.5. This allows for more nuanced reactions where mild emotions (intensity ≤ 0.5) only change facial expressions, while stronger emotions (intensity > 0.5) also trigger body motions.
+
+**Emotion-Motion Mapping:**
+The backend maps emotions to appropriate motions using the `EmotionMotionMapper` class in `src/open_llm_vtuber/emotion_motion_map.py`. The default mapping is:
+
+```python
+DEFAULT_EMOTION_MOTION_MAP = {
+    "joy": ["tap_body"],       # Happy/excited motions
+    "sadness": ["shake"],      # Sad/downcast motions
+    "anger": ["shake"],        # Angry/frustrated motions
+    "disgust": ["shake"],      # Disgusted motions
+    "fear": ["pinch_in"],      # Fearful/anxious motions
+    "surprise": ["flick_head"], # Surprised motions
+    "smirk": ["tap_body"],     # Mischievous/playful motions
+    "neutral": ["idle"],       # Default idle motions
+}
+```
+
+**Backend Processing:**
+The `actions_extractor` transformer in `src/open_llm_vtuber/agent/transformers.py` extracts emotions from the text and maps them to appropriate motions, but only when the emotion intensity is greater than 0.5.
+
+```python
+# Example of backend logic for motion extraction (from transformers.py)
+# Map emotions to motions (using the same emotion tags)
+motions = []
+# Assuming 'sentence' is a text object and 'live2d_model' and 'emotion_mapper' are available
+# text = sentence.text.lower()
+# emotion_pattern = r'\[([\w]+)(?::([0-9]*\.?[0-9]+))?\]'
+# matches = re.finditer(emotion_pattern, text)
+
+# for match in matches:
+#     emotion = match.group(1)
+#     intensity_str = match.group(2)
+
+#     # Parse intensity value, default to 1.0 if not specified
+#     intensity = 1.0
+#     if intensity_str:
+#         try:
+#             intensity = float(intensity_str)
+#             # Clamp intensity to valid range [0.0, 1.0]
+#             intensity = max(0.0, min(1.0, intensity))
+#         except ValueError:
+#             # If conversion fails, use default intensity
+#             intensity = 1.0
+
+#     # Only add motion if intensity is greater than 0.5
+#     if intensity > 0.5 and emotion in live2d_model.emo_map: # Assuming live2d_model.emo_map has emotion names
+#         # Get corresponding motion for this emotion
+#         motion = emotion_mapper.get_motion_for_emotion(emotion) # Assuming emotion_mapper is available
+#         if motion and motion not in motions:  # Avoid duplicates
+#             motions.append(motion)
+#             logger.debug(f"Adding motion {motion} for emotion {emotion} with intensity {intensity}")
+
+# # Set motions if any were found
+# if motions:
+#     actions.motions = motions
+#     logger.debug(f"Mapped emotions to motions: {motions}")
+```
+
+**Frontend Integration:**
+The frontend receives the motion information through the WebSocket and applies it to the Live2D model.
+
+```typescript
+// In use-audio-task.ts
+if (expressions?.[0] !== undefined) { // Expressions are applied first
+  model.expression(expressions[0]); // This still needs to be updated to handle intensity
+
+  // Handle motion if available
+  if (motions?.[0] !== undefined) {
+    const motionName = motions[0];
+    console.log(`Starting motion: ${motionName}`);
+
+    try {
+      // Use the motion method with appropriate priority
+      // The motion method is defined in the Live2DModel class from pixi-live2d-display
+      // It takes a motion group name and plays a random motion from that group
+      const priority = 2; // Normal priority (same as MotionPriority.NORMAL)
+      model.motion(motionName, undefined, priority);
+      console.log(`Motion started: ${motionName}`);
+    } catch (error) {
+      console.warn(`Failed to play motion ${motionName}:`, error);
+    }
+  }
+}
+```
+
+**Available Motions:**
+The Live2D model (shizuku) has the following motion groups:
+
+- `idle`: Default idle animations
+- `tap_body`: Happy/excited animations
+- `pinch_in`: Fearful/anxious animations
+- `pinch_out`: Surprised animations
+- `shake`: Sad/angry animations
+- `flick_head`: Surprised animations
+
+Each motion group contains multiple animation files (e.g., `idle_00.mtn`, `idle_01.mtn`, `idle_02.mtn`).
+
+**Usage:**
+To trigger emotions and motions in the AI's responses, include emotion tags in the text:
+
+```
+I'm so happy to see you! [joy:0.8]       # Strong joy - changes expression and triggers motion
+I'm a bit happy today. [joy:0.3]         # Mild joy - only changes expression, no motion
+That's really scary! [fear:0.9]          # Strong fear - changes expression and triggers motion
+That's somewhat concerning. [fear:0.4]   # Mild fear - only changes expression, no motion
+I'm not sure about that... [neutral]     # Default intensity (1.0) - changes expression and triggers motion
+```
+
+The system will automatically:
+1. Extract the emotion tags and their intensity values
+2. Set the appropriate facial expression (for all emotions regardless of intensity)
+3. Play the corresponding body motion (only for emotions with intensity > 0.5)
+
+**Customization:**
+To customize the emotion-motion mapping, modify the `DEFAULT_EMOTION_MOTION_MAP` in `src/open_llm_vtuber/emotion_motion_map.py`.
+
 ## Advanced Emotion Integration & Future Improvements
 
 ### Contextual Emotion Prompting
@@ -550,6 +733,70 @@ planning_prompt = (
 - More consistent emotional responses aligned with character personality
 - Reduced "emotional whiplash" between interactions
 - More nuanced emotional expressions
+
+### Frontend Expression Intensity Application (Recommended Improvement)
+
+To fully implement intensity-based facial expressions, the frontend's expression method needs to be modified to interpolate between expressions based on the provided intensity.
+
+**Proposed Changes for `live2d.tsx`:**
+```typescript
+// In live2d.tsx
+expression: (exprData?: any) => {
+  if (typeof exprData === 'object' && exprData.expression_index !== undefined && exprData.intensity !== undefined) {
+    // Handle expression with intensity
+    const expressionIndex = exprData.expression_index;
+    const intensity = exprData.intensity;
+    
+    // Get the neutral expression parameters (assuming index 0 is neutral)
+    const neutralExpression = modelRef.current?.internalModel.motionManager.expressionManager?.definitions[0];
+    const neutralParams = neutralExpression ? neutralExpression.parameters : [];
+    
+    // Get the target expression parameters
+    const targetExpression = modelRef.current?.internalModel.motionManager.expressionManager?.definitions[expressionIndex];
+    const targetParams = targetExpression ? targetExpression.parameters : [];
+    
+    // Interpolate between neutral and target based on intensity
+    const interpolatedParams = interpolateParameters(neutralParams, targetParams, intensity);
+    
+    // Apply the interpolated parameters
+    applyParameters(modelRef.current, interpolatedParams);
+  } else {
+    // Fall back to the original behavior for backward compatibility
+    modelRef.current?.expression(exprData);
+  }
+}
+
+// Helper function to interpolate parameters
+function interpolateParameters(neutralParams, targetParams, intensity) {
+  // Create a map for neutral parameters for quicker lookup
+  const neutralMap = new Map(neutralParams.map(p => [p.id, p]));
+
+  return targetParams.map(targetParam => {
+    const neutralParam = neutralMap.get(targetParam.id);
+    const neutralValue = neutralParam ? neutralParam.val : 0.0; // Assume 0.0 if not found in neutral
+
+    // Linear interpolation between neutral and target values
+    const interpolatedValue = neutralValue + (targetParam.val - neutralValue) * intensity; // Use .val as in Live2D expression JSON
+    
+    return {
+      ...targetParam,
+      val: interpolatedValue // Update 'val' property
+    };
+  });
+}
+
+// Helper function to apply interpolated parameters
+function applyParameters(model, params) {
+  params.forEach(param => {
+    model.internalModel.coreModel.setParameterValueById(param.id, param.val); // Use .val
+  });
+}
+```
+*Note: The Live2D expression JSON uses `val` for value, not `value`. The interpolation and application functions are adjusted accordingly.*
+
+**Expected Benefits**:
+- Proper application of emotion intensity for nuanced facial expressions.
+- More natural and dynamic visual responses from the Live2D model.
 
 ### Emotion Tag Vocabulary Expansion
 Expand the emotion tag vocabulary and implement mapping to supported expressions, allowing for richer emotional expression without modifying the Live2D model directly.
@@ -921,6 +1168,12 @@ class MultimodalEmotionExpression:
 - More holistic and natural emotional expression
 - Increased character believability and engagement
 - Richer user experience through multimodal interaction
+
+### Future Improvements from Motion Doc
+- Add more diverse motions for each emotion
+- Implement random selection from multiple motion options for each emotion
+- Add intensity-based motion selection (similar to expression intensity)
+- Support for custom emotion-motion mappings through configuration files
 
 ## TTS System Interaction with Emotion Tags
 
