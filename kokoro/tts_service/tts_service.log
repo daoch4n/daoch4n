@@ -1,6 +1,0 @@
-/usr/lib/python3/dist-packages/scipy/__init__.py:132: UserWarning: A NumPy version >=1.21.6 and <1.28.0 is required for this version of SciPy (detected version 2.2.6)
-  warnings.warn(f"A NumPy version >={np_minversion} and <{np_maxversion}"
-[32m20:18:56[0m | [36m             app:306[0m | [31m[1m   ERROR[0m | [31m[1mFailed to initialize Kokoro TTS pipeline: Failed to import transformers.models.albert.modeling_albert because of the following error (look up to see its traceback):
-cannot import name 'Inf' from 'numpy' (/home/vi/.local/lib/python3.12/site-packages/numpy/__init__.py)[0m
-[32m20:18:56[0m | [36m             app:476[0m | [31m[1m   ERROR[0m | [31m[1mFailed to initialize TTS: Failed to import transformers.models.albert.modeling_albert because of the following error (look up to see its traceback):
-cannot import name 'Inf' from 'numpy' (/home/vi/.local/lib/python3.12/site-packages/numpy/__init__.py)[0m

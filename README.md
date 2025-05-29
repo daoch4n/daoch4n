@@ -1,35 +1,59 @@
-<p align="center">
-  <img src="https://github-readme-stats.vercel.app/api?username=daoch4n&show_icons=true&theme=radical" alt="👀" />
-  <img src="https://github-readme-streak-stats.herokuapp.com/?user=daoch4n&theme=radical" alt="👀" />
-</p>
+<!--START_SECTION:waka-->
+**我是早起的** 
 
-# Open LLM VTuber
+```text
+🌞 早晨                     3312 commits        ██████████░░░░░░░░░░░░░░░   40.99 % 
+🌆 白天                     1030 commits        ███░░░░░░░░░░░░░░░░░░░░░░   12.75 % 
+🌃 傍晚                     1711 commits        █████░░░░░░░░░░░░░░░░░░░░   21.17 % 
+🌙 晚上                     2028 commits        ██████░░░░░░░░░░░░░░░░░░░   25.10 % 
+```
+📅 **我最有效率是在 星期四** 
 
-Talk to any LLM with hands-free voice interaction, voice interruption, and Live2D avatar running locally across platforms.
-
-## Building the Frontend
-
-The frontend is built using Vite and React. To build the frontend, run:
-
-```bash
-./build_frontend.sh
+```text
+星期一                      978 commits         ███░░░░░░░░░░░░░░░░░░░░░░   12.10 % 
+星期二                      1297 commits        ████░░░░░░░░░░░░░░░░░░░░░   16.05 % 
+星期三                      1082 commits        ███░░░░░░░░░░░░░░░░░░░░░░   13.39 % 
+星期四                      1431 commits        ████░░░░░░░░░░░░░░░░░░░░░   17.71 % 
+星期五                      1258 commits        ████░░░░░░░░░░░░░░░░░░░░░   15.57 % 
+星期六                      747 commits         ██░░░░░░░░░░░░░░░░░░░░░░░   09.24 % 
+星期日                      1288 commits        ████░░░░░░░░░░░░░░░░░░░░░   15.94 % 
 ```
 
-This will:
-1. Install dependencies in the `frontend-src` directory
-2. Build the frontend to `frontend-src/dist/web`
-3. The server will automatically serve files from this location
 
-## Running the Server
+📊 **本週的花費時間** 
 
-To run the server:
+```text
+💬 程式語言: 
+JavaScript               28 hrs 47 mins      █████████░░░░░░░░░░░░░░░░   37.69 % 
+Other                    14 hrs 43 mins      █████░░░░░░░░░░░░░░░░░░░░   19.28 % 
+YAML                     8 hrs 2 mins        ███░░░░░░░░░░░░░░░░░░░░░░   10.53 % 
+Markdown                 7 hrs 15 mins       ██░░░░░░░░░░░░░░░░░░░░░░░   09.50 % 
+JSON                     4 hrs 33 mins       █░░░░░░░░░░░░░░░░░░░░░░░░   05.96 % 
 
-```bash
-python run_server.py
+🔥 編輯器: 
+Firefox                  41 hrs 7 mins       █████████████░░░░░░░░░░░░   53.83 % 
+VS Code                  35 hrs 16 mins      ████████████░░░░░░░░░░░░░   46.17 % 
+
+🐱‍💻 專案: 
+zen-ai-router-worker     29 hrs 41 mins      ██████████░░░░░░░░░░░░░░░   38.87 % 
+DaokoTube                15 hrs 26 mins      █████░░░░░░░░░░░░░░░░░░░░   20.22 % 
+zen-ai-mcp-task-master   8 hrs 52 mins       ███░░░░░░░░░░░░░░░░░░░░░░   11.62 % 
+zen-ai-router-thinking   4 hrs 28 mins       █░░░░░░░░░░░░░░░░░░░░░░░░   05.86 % 
+openai-gemini-mod        4 hrs 19 mins       █░░░░░░░░░░░░░░░░░░░░░░░░   05.67 % 
+
+💻 作業系統: 
+Linux                    76 hrs 23 mins      █████████████████████████   100.00 % 
 ```
 
-The server will serve the frontend directly from the `frontend-src/dist/web` directory.
+**我最經常使用 JavaScript** 
 
-## Emotion-Based Pose Changes
+```text
+JavaScript               9 repos             ████████████████░░░░░░░░░   64.29 % 
+Python                   4 repos             ███████░░░░░░░░░░░░░░░░░░   28.57 % 
+Cython                   1 repo              ██░░░░░░░░░░░░░░░░░░░░░░░   07.14 % 
+```
 
-The Shizuku Live2D model supports emotion-based pose changes. When the AI responds with emotion tags like `[joy:0.7]` or `[surprise:0.3]`, the model will automatically change its facial expression and body pose to match the emotion.
+
+
+
+<!--END_SECTION:waka-->
