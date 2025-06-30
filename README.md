@@ -1,5 +1,5 @@
 <!--START_SECTION:waka-->
-![Code Time](http://img.shields.io/badge/Code%20Time-265%20hrs%2027%20mins-blue)
+![Code Time](http://img.shields.io/badge/Code%20Time-254%20hrs%2029%20mins-blue)
 
 ![Profile Views](http://img.shields.io/badge/%E3%83%97%E3%83%AD%E3%83%95%E3%82%A3%E3%83%BC%E3%83%AB%E3%83%93%E3%83%A5%E3%83%BC-3-blue)
 
